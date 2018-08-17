@@ -12,7 +12,7 @@ RUN jupyter nbextension enable collapsible_headings/main
 
 # TODO: create a separate group for 'docker' user
 COPY --chown=docker:sudo fastai/ /home/docker/fastai
-COPY --chown=docker:sudo data /home/docker/project/data
+# COPY --chown=docker:sudo data /home/docker/project/data
 COPY --chown=docker:sudo notebooks /home/docker/project/notebooks
 COPY --chown=docker:sudo jupyter_notebook_config.json /home/docker/project/
 
