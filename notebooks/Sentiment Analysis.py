@@ -8,14 +8,14 @@ import sys
 sys.path.append("../")
 
 
-# In[82]:
+# In[2]:
 
 
 get_ipython().run_line_magic('load_ext', 'watermark')
 get_ipython().run_line_magic('watermark', '-ptorch,pandas,numpy -m')
 
 
-# In[10]:
+# In[3]:
 
 
 from pathlib import Path
@@ -44,14 +44,14 @@ from tqdm import tqdm_notebook
 get_ipython().run_line_magic('matplotlib', 'inline')
 
 
-# In[13]:
+# In[4]:
 
 
 path = Path("../data/cache/lm_douban/")
 path.mkdir(parents=True, exist_ok=True)
 
 
-# In[61]:
+# In[5]:
 
 
 def plot_confusion_matrix(cm, classes,
@@ -91,14 +91,14 @@ def plot_confusion_matrix(cm, classes,
 
 # ## Import And Tokenize Comments and Ratings
 
-# In[3]:
+# In[6]:
 
 
 UNK = 2
 BEG = 1
 
 
-# In[4]:
+# In[7]:
 
 
 mapping = joblib.load("../data/mapping.pkl")
@@ -106,7 +106,7 @@ df_ratings = pd.read_csv("../data/ratings.csv")
 df_ratings.head()
 
 
-# In[5]:
+# In[8]:
 
 
 sss = StratifiedShuffleSplit(n_splits=1, test_size=0.4, random_state=888)
@@ -120,13 +120,13 @@ df_test = df_test.iloc[test_idx].copy()
 del df_ratings
 
 
-# In[6]:
+# In[9]:
 
 
 df_test.iloc[0]["comment"],[mapping.get(x, 1) for x in df_test.iloc[0]["comment"]]
 
 
-# In[7]:
+# In[10]:
 
 
 results = []
@@ -136,10 +136,17 @@ for df, tokens in zip((df_train, df_val, df_test), (tokens_train, tokens_val, to
         tokens.append(np.array([BEG] + [mapping.get(x, UNK-1) + 1 for x in row["comment"]]))
 
 
-# In[8]:
+# In[11]:
 
 
 assert len(tokens_train) == df_train.shape[0]
+
+
+# In[16]:
+
+
+n_toks = max(mapping.values()) + 2 # starts with zero + the new BEG token
+emb_dim = 300
 
 
 # ### Prepare the embedding matrix
@@ -155,7 +162,6 @@ weights['0.encoder.weight'].shape
 # In[20]:
 
 
-n_toks = weights['0.encoder.weight'].shape[0] + 1
 emb_dim = weights['0.encoder.weight'].shape[1]
 new_weights = np.zeros((n_toks, weights['0.encoder.weight'].shape[1]))
 new_weights[1:, :] = weights['0.encoder.weight']
@@ -841,7 +847,7 @@ for i in range(3):
 
 # ## Regressor
 
-# In[28]:
+# In[13]:
 
 
 bs = 64
@@ -854,7 +860,7 @@ val_dl = DataLoader(val_ds, bs, transpose=True, num_workers=1, pad_idx=0, sample
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[29]:
+# In[14]:
 
 
 dps = np.array([0.4,0.5,0.05,0.3,0.4]) * 0.5
@@ -862,7 +868,7 @@ opt_fn = partial(torch.optim.Adam, betas=(0.7, 0.99))
 bptt = 50
 
 
-# In[31]:
+# In[17]:
 
 
 model = get_rnn_classifier(bptt, bptt*2, 3, n_toks, emb_sz=emb_dim, n_hid=500, n_layers=3, pad_token=0,
@@ -870,7 +876,7 @@ model = get_rnn_classifier(bptt, bptt*2, 3, n_toks, emb_sz=emb_dim, n_hid=500, n
           dropouti=dps[0], wdrop=dps[1], dropoute=dps[2], dropouth=dps[3])
 
 
-# In[36]:
+# In[19]:
 
 
 class RNN_RegLearner(RNN_Learner):
@@ -880,7 +886,7 @@ class RNN_RegLearner(RNN_Learner):
     def _get_crit(self, data): return lambda x, y: F.mse_loss(x[:, 0], y)
 
 
-# In[37]:
+# In[20]:
 
 
 learn = RNN_RegLearner(model_data, TextModel(to_gpu(model)), opt_fn=opt_fn)
@@ -936,15 +942,30 @@ learn.save('reg_full')
 torch.save(learn.model, path / "sentiment_model.pth")
 
 
+# In[21]:
+
+
+learn.load('reg_full')
+
+
 # ### Evaluation
 
-# In[45]:
+# In[23]:
+
+
+test_ds = TextDataset(tokens_test, df_test.rating.values)
+test_samp = SortSampler(tokens_test, key=lambda x: len(tokens_test[x]))
+test_dl = DataLoader(test_ds, bs, transpose=True, num_workers=1, pad_idx=0, sampler=test_samp)
+
+
+# In[63]:
 
 
 def get_preds(data_loader):
     learn.model.eval()
+    learn.model.reset()         
     preds, ys = [], []
-    for x, y in tqdm_notebook(data_loader):
+    for x, y in tqdm_notebook(data_loader):   
         preds.append(learn.model(x)[0].cpu().data.numpy()[:, 0])
         ys.append(y.cpu().numpy())
     preds = np.concatenate(preds)
@@ -954,38 +975,88 @@ ys, preds = get_preds(val_dl)
 preds.shape, ys.shape
 
 
-# In[48]:
+# In[32]:
 
 
 pd.Series(ys).describe()
 
 
-# In[56]:
+# In[33]:
 
 
 pd.Series(ys).describe()
 
 
-# In[53]:
+# In[67]:
 
 
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[55]:
+# In[68]:
 
 
 preds = np.clip(preds, 1, 5)
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[57]:
+# In[71]:
+
+
+# Save predictions
+df_val.loc[df_val.iloc[list(iter(val_samp))].index, "preds"] = preds
+df_val.to_csv(path / "df_val.csv.gz", index=False, compression="gzip")
+df_val.head()
+
+
+# In[72]:
+
+
+np.sum(np.square(df_val.rating.values - df_val.preds.values)) / preds.shape[0]
+
+
+# In[73]:
+
+
+ys, preds = get_preds(test_dl)
+preds.shape, ys.shape
+
+
+# In[74]:
+
+
+preds = np.clip(preds, 1, 5)
+np.sum(np.square(preds - ys)) / preds.shape[0]
+
+
+# In[75]:
+
+
+# Save predictions
+df_test.loc[df_test.iloc[list(iter(test_samp))].index, "preds"] = preds
+df_test.to_csv(path / "df_test.csv.gz", index=False, compression="gzip")
+df_test.head()
+
+
+# In[81]:
+
+
+df_test.sample(20)
+
+
+# In[76]:
+
+
+np.sum(np.square(df_test.rating.values - df_test.preds.values)) / preds.shape[0]
+
+
+# In[77]:
 
 
 preds_class = np.round(preds)
 
 
-# In[62]:
+# In[78]:
 
 
 cnf_matrix = confusion_matrix(ys, preds_class)
@@ -998,7 +1069,7 @@ plot_confusion_matrix(
     title='Confusion matrix, without normalization')
 
 
-# In[63]:
+# In[79]:
 
 
 from sklearn.metrics import precision_recall_fscore_support
