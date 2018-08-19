@@ -11,9 +11,10 @@ RUN jupyter contrib nbextension install --user
 RUN jupyter nbextension enable collapsible_headings/main
 
 # TODO: create a separate group for 'docker' user
-COPY --chown=docker:sudo fastai/ /home/docker/fastai
-# COPY --chown=docker:sudo notebooks /home/docker/project/notebooks
-COPY --chown=docker:sudo jupyter_notebook_config.json /home/docker/project/
+COPY --chown=docker:root fastai/ /home/docker/fastai
+# COPY --chown=docker:root notebooks /home/docker/project/notebooks
+COPY --chown=docker:root jupyter_notebook_config.json /home/docker/project/
+COPY --chown=docker:root jupyter_notebook_config.py /home/docker/project/
 
 RUN cd /home/docker/fastai && pip install -e  .
 
