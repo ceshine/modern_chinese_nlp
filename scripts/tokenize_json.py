@@ -1,6 +1,9 @@
 import gzip
+import subprocess
 import json
 import re
+import sys
+import pathlib
 from collections import Counter
 
 from tqdm import tqdm
@@ -10,10 +13,13 @@ import numpy as np
 
 DATAPATH = "/mnt/Intel/zhwiki.json.gz"
 TMPPATH = "/mnt/Intel/tmp_texts.txt"
+TMPPATH_WORD = "/mnt/Intel/tmp_words.txt"
 
 CC = OpenCC('t2s')
 MIN_FREQ = 500
 VOC_SIZE = 10000
+MIN_FREQ_WORD = 500
+VOC_SIZE_WORD = 30000
 PAD = 0
 UNK = 1
 
@@ -60,7 +66,11 @@ def filter_texts(texts):
     return False
 
 
-def main():
+def main(char_level):
+    """
+    * 2-pass for character-level tokenization.
+    * 3-pass for word-level tokenization.
+    """
     cnt = Counter()
     with gzip.open(DATAPATH) as f:
         with open(TMPPATH, "w") as fw:
@@ -75,31 +85,59 @@ def main():
                     section = clean_text(section)
                     if len(section) < 200 or filter_texts(section):
                         continue
-                    # print(article["title"])
-                    # print(section[:100])
-                    # print(article["section_texts"][0][:100].replace("\n", " "))
-                    # if i == 1000:
-                    #     return
-                    cnt.update(section)
+                    if char_level:
+                        cnt.update(section)
                     # fw.write(title + "===\n")
                     fw.write(section + "\n")
-    print(cnt.most_common(100))
-    joblib.dump(cnt, "data/freq.pkl")
-    mapping = {
-        char: token + 2 for token, (char, freq) in enumerate(cnt.most_common(VOC_SIZE))
-        if freq > MIN_FREQ
-    }
-    print("Vocab:", len(mapping))
-    joblib.dump(mapping, "data/mapping.pkl")
-    texts = []
-    with open(TMPPATH) as f:
-        for i, section in tqdm(enumerate(f.readlines())):
-            texts.append(
-                np.array(list(map(lambda x: mapping.get(x, UNK), section))))
-            # if i == 10000:
-            #     break
-    joblib.dump(np.array(texts), "data/tokens.pkl")
+    if char_level:
+        print(cnt.most_common(100))
+        joblib.dump(cnt, "data/freq.pkl")
+        mapping = {
+            char: token + 2 for token, (char, freq) in enumerate(cnt.most_common(VOC_SIZE))
+            if freq > MIN_FREQ
+        }
+        print("Vocab:", len(mapping))
+        joblib.dump(mapping, "data/mapping.pkl")
+        texts = []
+        with open(TMPPATH) as f:
+            for i, section in tqdm(enumerate(f.readlines())):
+                texts.append(
+                    np.array(list(map(lambda x: mapping.get(x, UNK), section))))
+        joblib.dump(np.array(texts), "data/tokens.pkl")
+    else:
+        # Tokenization
+        res = subprocess.run([
+            "thulac", "-model_dir", "/mnt/SSD_Data/openai_nlp/THULAC/models/",
+            "-seg_only", "-input", TMPPATH, "-output", TMPPATH_WORD
+        ], stdout=subprocess.PIPE)
+        print(res)
+        # Count tokens
+        with open(TMPPATH_WORD) as f:
+            for _, section in tqdm(enumerate(f.readlines())):
+                cnt.update(re.sub("\s+", " ", section).split(" "))
+        print(cnt.most_common(100))
+        joblib.dump(cnt, "data/freq_word.pkl")
+        mapping = {
+            word: token + 2 for token, (word, freq) in enumerate(
+                cnt.most_common(VOC_SIZE_WORD))
+            if freq > MIN_FREQ_WORD
+        }
+        print("Vocab:", len(mapping))
+        joblib.dump(mapping, "data/mapping_word.pkl")
+        texts = []
+        with open(TMPPATH_WORD) as f:
+            for i, section in tqdm(enumerate(f.readlines())):
+                texts.append(
+                    np.array(list(map(
+                        lambda x: mapping.get(x, UNK),
+                        re.sub("\s+", " ", section).split(" ")
+                    ))))
+        joblib.dump(np.array(texts), "data/tokens_word.pkl")
 
 
 if __name__ == "__main__":
-    main()
+    char_level = True
+    if len(sys.argv):
+        if sys.argv[1] == "--word":
+            char_level = False
+    main(char_level=char_level)
