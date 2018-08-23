@@ -63,8 +63,8 @@ get_voc_stats(tokens)
 # In[7]:
 
 
-bptt = 100
-batch_size = 128
+bptt = 50
+batch_size = 64
 n_tok = int(np.max([np.max(x) for x in tokens]) + 1)
 trn_loader = LanguageModelLoader(
     np.concatenate(trn_tokens), batch_size, bptt)
@@ -211,23 +211,24 @@ learner.lr_find(start_lr=1e-5, end_lr=1, linear=False)
 learner.sched.plot()
 
 
-# In[16]:
+# In[15]:
 
 
 lrs = 3e-3
+learner.clip = 10.
 learner.fit(lrs, 1, wds=1e-7, use_clr=(50, 3), cycle_len=10, use_wd_sched=True)
 
 
-# In[18]:
+# In[16]:
 
 
 learner.save("lm_lstm")
 
 
-# In[19]:
+# In[17]:
 
 
-lrs = 1e-3
+lrs = 5e-4
 learner.fit(lrs, 1, wds=1e-7, use_clr=(50, 3), cycle_len=10, use_wd_sched=True)
 
 
@@ -263,7 +264,7 @@ tmp_iter = iter(trn_loader)
 next(tmp_iter)[0].shape
 
 
-# In[20]:
+# In[18]:
 
 
 learner.load("lm_lstm")
@@ -271,7 +272,7 @@ learner.load("lm_lstm")
 
 # ## Test the model
 
-# In[21]:
+# In[19]:
 
 
 learner.model.eval()
@@ -279,29 +280,29 @@ learner.model.eval()
 
 # ### Next Character Inference
 
-# In[22]:
+# In[28]:
 
 
 get_ipython().system('pip install jieba')
 import jieba
 
 
-# In[31]:
+# In[23]:
 
 
-texts = "德国 是 世界 大国 之一 ， 其 国内 生产 总 值 以 国际 汇率 计"
+texts = "德国 是 世界 大国 之一 ， 其 国内 生产总值 以 国际 汇率 计"
 tokens = list(map(lambda x: mapping.get(x, 1), texts.split(" ")))
 tokens
 
 
-# In[32]:
+# In[24]:
 
 
 logits, _, _ = learner.model(T(tokens).unsqueeze(1))
 logits.shape
 
 
-# In[33]:
+# In[25]:
 
 
 sorted_idx = np.argsort(logits.data.cpu().numpy(), 1)
@@ -313,7 +314,7 @@ pd.DataFrame({"orig": list(texts.split(" ")) + [" "],
               "pred_1": [""] + preds[0], "pred_2": [""] + preds[1], "pred_3": [""] + preds[2]})
 
 
-# In[38]:
+# In[26]:
 
 
 def eval(texts):
@@ -329,13 +330,13 @@ def eval(texts):
                   "pred_1": [""] + preds[0], "pred_2": [""] + preds[1], "pred_3": [""] + preds[2]})
 
 
-# In[40]:
+# In[29]:
 
 
 eval(list(jieba.cut("在现代印刷媒体，卡通是一种通常有幽默色")))
 
 
-# In[42]:
+# In[30]:
 
 
 eval(list(jieba.cut("对中国与南洋发动全面的战争。1990年代，中")))
@@ -343,7 +344,7 @@ eval(list(jieba.cut("对中国与南洋发动全面的战争。1990年代，中"
 
 # ### Generate Sentence
 
-# In[89]:
+# In[33]:
 
 
 import random
@@ -379,7 +380,7 @@ def generate_text(tokens,N=25):
 generate_text(get_tokens("德国是世界大国之一，其国内生产总值以国际汇率为主，"))
 
 
-# In[92]:
+# In[34]:
 
 
 generate_text(get_tokens("德国 是 世界 大国 之一 ， 其 国内 生产 总 值 以 国际 汇率 为主 ，".split(" "), seg=False))
@@ -391,19 +392,19 @@ generate_text(get_tokens("德国 是 世界 大国 之一 ， 其 国内 生产 
 generate_text(get_tokens("在现代印刷媒体，卡通是一种通常有幽默色"))
 
 
-# In[52]:
+# In[35]:
 
 
 generate_text(get_tokens("在现代印刷媒体，第"))
 
 
-# In[53]:
+# In[36]:
 
 
 generate_text(get_tokens("日本后来成为第二次世界大战的轴心国之一，对中国与南洋发动全面的战争。"))           
 
 
-# In[55]:
+# In[37]:
 
 
 generate_text(get_tokens("传说日本于公元前660年2月11日建国，在公元4世纪出现首个统一政权，并于大化改新中确立了天皇的中央集权体制"
@@ -412,26 +413,26 @@ generate_text(get_tokens("传说日本于公元前660年2月11日建国，在公
                          "战国"))           
 
 
-# In[60]:
+# In[38]:
 
 
 generate_text(get_tokens("特朗普政府以为加征关税会令中国屈服，这种策略肯定会适得其反。如果就业和财富"))
 
 
-# In[65]:
+# In[39]:
 
 
 generate_text(get_tokens("香港有半数人住在公屋，如今这里意外成为Instagram上备受欢迎的拍照地"))
 
 
-# In[66]:
+# In[40]:
 
 
 generate_text(get_tokens("香港有半数人住在公屋，如今这里意外成为Instagram上备受欢迎的拍照地，"
                          "呈现出一个与天际线中的香港不同的景象"))
 
 
-# In[71]:
+# In[42]:
 
 
 generate_text(get_tokens("香港有半数人住在公屋，如今这里意外成为Insta"))
