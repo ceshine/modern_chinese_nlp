@@ -6,8 +6,8 @@ from tqdm import tqdm
 
 DATAPATH = "data/ratings.csv"
 TMPPATH = "/tmp/ratings.txt"
-TMPPATH_WORD = "/tmp/ratings_words.txt"
-TARGETPATH = "data/ratings_words.csv"
+TMPPATH_WORD = "/tmp/ratings_word.txt"
+TARGETPATH = "data/ratings_word.csv"
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
             comments.append(line)
 
     final_ratings = pd.DataFrame({
-        "comments": comments,
+        "comment": comments,
         "rating": ratings.rating
     })
     final_ratings.to_csv(TARGETPATH, index=False)

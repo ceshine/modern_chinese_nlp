@@ -18,7 +18,7 @@ TMPPATH_WORD = "/mnt/Intel/tmp_words.txt"
 CC = OpenCC('t2s')
 MIN_FREQ = 500
 VOC_SIZE = 10000
-MIN_FREQ_WORD = 200
+MIN_FREQ_WORD = 750
 VOC_SIZE_WORD = 30000
 PAD = 0
 UNK = 1
@@ -137,7 +137,7 @@ def main(char_level):
 
 if __name__ == "__main__":
     char_level = True
-    if len(sys.argv):
+    if len(sys.argv) > 1:
         if sys.argv[1] == "--word":
             char_level = False
     main(char_level=char_level)

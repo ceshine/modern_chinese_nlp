@@ -211,34 +211,21 @@ learner.lr_find(start_lr=1e-5, end_lr=1, linear=False)
 learner.sched.plot()
 
 
-# In[15]:
+# In[16]:
 
 
 lrs = 3e-3
 learner.clip = 10.
-learner.fit(lrs, 1, wds=1e-7, use_clr=(50, 3), cycle_len=10, use_wd_sched=True)
-
-
-# In[16]:
-
-
-learner.save("lm_lstm")
+learner.fit(lrs, 1, wds=1e-7, use_clr=(50, 3), cycle_len=15, use_wd_sched=True)
 
 
 # In[17]:
 
 
-lrs = 5e-4
-learner.fit(lrs, 1, wds=1e-7, use_clr=(50, 3), cycle_len=10, use_wd_sched=True)
-
-
-# In[ ]:
-
-
 learner.sched.plot_lr()
 
 
-# In[ ]:
+# In[18]:
 
 
 learner.save("lm_lstm")
@@ -280,14 +267,14 @@ learner.model.eval()
 
 # ### Next Character Inference
 
-# In[28]:
+# In[20]:
 
 
 get_ipython().system('pip install jieba')
 import jieba
 
 
-# In[23]:
+# In[21]:
 
 
 texts = "德国 是 世界 大国 之一 ， 其 国内 生产总值 以 国际 汇率 计"
@@ -295,14 +282,14 @@ tokens = list(map(lambda x: mapping.get(x, 1), texts.split(" ")))
 tokens
 
 
-# In[24]:
+# In[22]:
 
 
 logits, _, _ = learner.model(T(tokens).unsqueeze(1))
 logits.shape
 
 
-# In[25]:
+# In[23]:
 
 
 sorted_idx = np.argsort(logits.data.cpu().numpy(), 1)
@@ -314,7 +301,7 @@ pd.DataFrame({"orig": list(texts.split(" ")) + [" "],
               "pred_1": [""] + preds[0], "pred_2": [""] + preds[1], "pred_3": [""] + preds[2]})
 
 
-# In[26]:
+# In[24]:
 
 
 def eval(texts):
@@ -330,13 +317,13 @@ def eval(texts):
                   "pred_1": [""] + preds[0], "pred_2": [""] + preds[1], "pred_3": [""] + preds[2]})
 
 
-# In[29]:
+# In[25]:
 
 
 eval(list(jieba.cut("在现代印刷媒体，卡通是一种通常有幽默色")))
 
 
-# In[30]:
+# In[26]:
 
 
 eval(list(jieba.cut("对中国与南洋发动全面的战争。1990年代，中")))
@@ -344,7 +331,7 @@ eval(list(jieba.cut("对中国与南洋发动全面的战争。1990年代，中"
 
 # ### Generate Sentence
 
-# In[33]:
+# In[27]:
 
 
 import random
@@ -380,31 +367,31 @@ def generate_text(tokens,N=25):
 generate_text(get_tokens("德国是世界大国之一，其国内生产总值以国际汇率为主，"))
 
 
-# In[34]:
+# In[28]:
 
 
 generate_text(get_tokens("德国 是 世界 大国 之一 ， 其 国内 生产 总 值 以 国际 汇率 为主 ，".split(" "), seg=False))
 
 
-# In[91]:
+# In[29]:
 
 
 generate_text(get_tokens("在现代印刷媒体，卡通是一种通常有幽默色"))
 
 
-# In[35]:
+# In[30]:
 
 
 generate_text(get_tokens("在现代印刷媒体，第"))
 
 
-# In[36]:
+# In[31]:
 
 
 generate_text(get_tokens("日本后来成为第二次世界大战的轴心国之一，对中国与南洋发动全面的战争。"))           
 
 
-# In[37]:
+# In[32]:
 
 
 generate_text(get_tokens("传说日本于公元前660年2月11日建国，在公元4世纪出现首个统一政权，并于大化改新中确立了天皇的中央集权体制"
@@ -413,26 +400,26 @@ generate_text(get_tokens("传说日本于公元前660年2月11日建国，在公
                          "战国"))           
 
 
-# In[38]:
+# In[33]:
 
 
 generate_text(get_tokens("特朗普政府以为加征关税会令中国屈服，这种策略肯定会适得其反。如果就业和财富"))
 
 
-# In[39]:
+# In[34]:
 
 
 generate_text(get_tokens("香港有半数人住在公屋，如今这里意外成为Instagram上备受欢迎的拍照地"))
 
 
-# In[40]:
+# In[35]:
 
 
 generate_text(get_tokens("香港有半数人住在公屋，如今这里意外成为Instagram上备受欢迎的拍照地，"
                          "呈现出一个与天际线中的香港不同的景象"))
 
 
-# In[42]:
+# In[36]:
 
 
 generate_text(get_tokens("香港有半数人住在公屋，如今这里意外成为Insta"))
