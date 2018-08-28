@@ -53,9 +53,9 @@ def clean_text(text):
     text = re.sub(r"^ ", "", text)
     # Remove english
     text = re.sub(
-        r"(?<=[^a-zA-Z0-9]\s)[a-zA-Z\s\.\,\(\)0-9\-\;]+(?=[\s。][^a-zA-Z0-9])", "", text)
+        r"(?<=[^a-zA-Z0-9]\s)[a-zA-Z\s\.\,\(\)0-9\-\;\"]+(?=[\s。][^a-zA-Z0-9])", "", text)
     text = re.sub(
-        r"(?<=[^a-zA-Z0-9]\s)[a-zA-Z\s\.\,\(\)0-9\-\;]$", "", text)
+        r"(?<=[^a-zA-Z0-9]\s)[a-zA-Z\s\.\,\(\)0-9\-\;\"]$", "", text)
     return text
 
 
@@ -105,7 +105,7 @@ def main(char_level):
                     np.array(list(map(lambda x: mapping.get(x, UNK), section))))
         joblib.dump(np.array(texts), "data/tokens.pkl")
     else:
-        # Tokenization
+        # Segmentation
         res = subprocess.run([
             "thulac", "-model_dir", "/mnt/SSD_Data/openai_nlp/THULAC/models/",
             "-seg_only", "-input", TMPPATH, "-output", TMPPATH_WORD
@@ -114,7 +114,7 @@ def main(char_level):
         # Count tokens
         with open(TMPPATH_WORD) as f:
             for _, section in tqdm(enumerate(f.readlines())):
-                cnt.update(re.sub("\s+", " ", section).split(" "))
+                cnt.update(re.sub(r"\s+", " ", section).split(" "))
         print(cnt.most_common(100))
         joblib.dump(cnt, "data/freq_word.pkl")
         mapping = {
@@ -124,15 +124,16 @@ def main(char_level):
         }
         print("Vocab:", len(mapping))
         joblib.dump(mapping, "data/mapping_word.pkl")
-        texts = []
+        # The actual tokenization part
+        tokens = []
         with open(TMPPATH_WORD) as f:
             for i, section in tqdm(enumerate(f.readlines())):
-                texts.append(
+                tokens.append(
                     np.array(list(map(
                         lambda x: mapping.get(x, UNK),
-                        re.sub("\s+", " ", section).split(" ")
+                        re.sub(r"\s+", " ", section).split(" ")
                     ))))
-        joblib.dump(np.array(texts), "data/tokens_word.pkl")
+        joblib.dump(np.array(tokens), "data/tokens_word.pkl")
 
 
 if __name__ == "__main__":
