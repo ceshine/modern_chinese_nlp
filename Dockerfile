@@ -4,7 +4,8 @@ MAINTAINER CeShine Lee <ceshine@ceshine.net>
 
 RUN pip install --upgrade pip && \
   pip install -U jupyter h5py pandas==0.22.0 sklearn matplotlib seaborn plotly watermark \
-                 pillow-simd joblib tqdm jupyter_contrib_nbextensions spacy cupy && \
+                 pillow-simd joblib tqdm jupyter_contrib_nbextensions spacy cupy \
+                 eli5 opencc-python-reimplemented thulac jieba sentencepiece && \
   rm -rf ~/.cache/pip
 
 RUN jupyter contrib nbextension install --user
