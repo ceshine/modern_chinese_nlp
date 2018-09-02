@@ -449,7 +449,7 @@ learn.fit(lrs, 1, wds=0, cycle_len=14, use_clr=(32,10))
 learn.save("clas_full")
 
 
-# ### Evaluate
+# #### Evaluate
 
 # In[198]:
 
