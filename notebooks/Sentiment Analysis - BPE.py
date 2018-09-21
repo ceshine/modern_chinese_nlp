@@ -12,7 +12,7 @@ sys.path.append("../")
 
 
 get_ipython().run_line_magic('load_ext', 'watermark')
-get_ipython().run_line_magic('watermark', '-ptorch,pandas,numpy -m')
+get_ipython().run_line_magic('watermark', '-p torch,pandas,numpy -m')
 
 
 # In[3]:
@@ -94,14 +94,14 @@ def plot_confusion_matrix(cm, classes,
 
 # ## Import And Tokenize Comments and Ratings
 
-# In[9]:
+# In[6]:
 
 
 df_ratings = pd.read_csv("../data/ratings_word.csv")
 df_ratings.head()
 
 
-# In[10]:
+# In[7]:
 
 
 sss = StratifiedShuffleSplit(n_splits=1, test_size=0.4, random_state=888)
@@ -115,9 +115,7 @@ df_test = df_test.iloc[test_idx].copy()
 del df_ratings
 
 
-# ### Use the BPE Vocabulary from the Wiki model
-
-# In[7]:
+# In[8]:
 
 
 UNK = 0
@@ -125,7 +123,9 @@ BEG = 1
 EMB_DIM = 300
 
 
-# In[8]:
+# ### Use the BPE Vocabulary from the Wiki model
+
+# In[9]:
 
 
 sp = spm.SentencePieceProcessor()
@@ -182,46 +182,55 @@ weights['1.decoder.weight'][BEG, :] = 0
 n_toks = weights['0.encoder.weight'].shape[0]
 
 
-# ### (TODO) Use the Refitted Vocabulary
+# ### Use the Refitted Vocabulary
+# #### Investigate Vocabulary Differences
 
-# In[ ]:
+# In[9]:
 
 
 itos_orig = []
-with open("data/bpe_model.vocab") as f:
+with open("../data/bpe_model.vocab", mode="r", encoding="utf-8") as f:
     for line in f.readlines():
-        itos_orig.append(line.split("\t"))
+        itos_orig.append(line.split("\t")[0])
 itos = []
-with open("data/rating_bpe_model.vocab") as f:
+with open("../data/rating_bpe_model.vocab", mode="r", encoding="utf-8") as f:
     for line in f.readlines():
-        itos.append(line.split("\t"))
+        itos.append(line.split("\t")[0])
 n_toks = len(itos)
+n_toks
 
 
-# In[ ]:
+# In[10]:
+
+
+itos[:5]
+
+
+# In[11]:
 
 
 mapping = {s: idx for idx, s in enumerate(itos)}
 mapping_orig = {s: idx for idx, s in enumerate(itos_orig)}
 
 
-# In[144]:
+# In[12]:
 
 
 voc_diff = set(itos) - set(itos_orig)
+print(len(voc_diff))
 sorted([(x, mapping[x]) for x in list(voc_diff)], key=lambda x: x[1], reverse=True)[:50]
 
 
 # #### Tokenize
 
-# In[ ]:
+# In[13]:
 
 
 sp = spm.SentencePieceProcessor()
 sp.Load("../data/rating_bpe_model.model")
 
 
-# In[15]:
+# In[14]:
 
 
 results = []
@@ -232,13 +241,13 @@ for df, tokens in zip((df_train, df_val, df_test), (tokens_train, tokens_val, to
 assert len(tokens_train) == df_train.shape[0]        
 
 
-# In[74]:
+# In[15]:
 
 
 tokens_val[0]
 
 
-# In[75]:
+# In[16]:
 
 
 df_val.iloc[0]
@@ -278,7 +287,7 @@ weights['1.decoder.weight'] = T(np.copy(new_matrix))
 
 # ## Languange Model
 
-# In[19]:
+# In[20]:
 
 
 bs = 64
@@ -287,7 +296,7 @@ trn_dl = LanguageModelLoader(np.concatenate(tokens_train), bs, bptt)
 val_dl = LanguageModelLoader(np.concatenate(tokens_val), bs, bptt)
 
 
-# In[20]:
+# In[21]:
 
 
 np.max(np.array(list(itertools.chain.from_iterable(tokens_train))))
@@ -296,17 +305,17 @@ np.max(np.array(list(itertools.chain.from_iterable(tokens_train))))
 # In[23]:
 
 
-model_data = LanguageModelData(path, pad_idx=2, n_toks, trn_dl, val_dl, bs=bs, bptt=bptt)
+model_data = LanguageModelData(path, 2, n_toks, trn_dl, val_dl, bs=bs, bptt=bptt)
 
 
-# In[25]:
+# In[24]:
 
 
 drops = np.array([0.25, 0.1, 0.2, 0.02, 0.15])*0.7
 opt_fn = partial(torch.optim.Adam, betas=(0.8, 0.99))
 
 
-# In[26]:
+# In[25]:
 
 
 learner = model_data.get_model(opt_fn, EMB_DIM, 500, 3, 
@@ -315,13 +324,13 @@ learner.metrics = [accuracy]
 learner.freeze_to(-1)
 
 
-# In[27]:
+# In[26]:
 
 
 learner.model.load_state_dict(weights)
 
 
-# In[28]:
+# In[27]:
 
 
 lr=1e-3
@@ -329,7 +338,7 @@ lrs = lr
 learner.fit(lrs/2, 1, wds=1e-7, use_clr=(32,2), cycle_len=1)
 
 
-# In[29]:
+# In[28]:
 
 
 learner.save('lm_last_ft')
@@ -395,7 +404,7 @@ for df in (df_train, df_val, df_test):
 df_train.label.value_counts()
 
 
-# In[57]:
+# In[37]:
 
 
 bs = 64
@@ -408,7 +417,7 @@ val_dl = DataLoader(val_ds, bs, transpose=True, num_workers=1, pad_idx=0, sample
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[58]:
+# In[38]:
 
 
 dps = np.array([0.4,0.5,0.05,0.3,0.4]) * 0.5
@@ -416,7 +425,7 @@ opt_fn = partial(torch.optim.Adam, betas=(0.7, 0.99))
 bptt = 50
 
 
-# In[59]:
+# In[39]:
 
 
 model = get_rnn_classifier(bptt, bptt*2, 3, n_toks, emb_sz=EMB_DIM, n_hid=500, n_layers=3, pad_token=2,
@@ -424,7 +433,7 @@ model = get_rnn_classifier(bptt, bptt*2, 3, n_toks, emb_sz=EMB_DIM, n_hid=500, n
           dropouti=dps[0], wdrop=dps[1], dropoute=dps[2], dropouth=dps[3])
 
 
-# In[60]:
+# In[40]:
 
 
 learn = RNN_Learner(model_data, TextModel(to_gpu(model)), opt_fn=opt_fn)
@@ -442,7 +451,7 @@ learn.lr_find(lrs/1000)
 learn.sched.plot()
 
 
-# In[61]:
+# In[42]:
 
 
 lr=2e-4
@@ -451,33 +460,33 @@ lrs = np.array([lr/(lrm**4), lr/(lrm**3), lr/(lrm**2), lr/lrm, lr])
 learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
 
 
-# In[62]:
+# In[43]:
 
 
 learn.save('clas_0')
 
 
-# In[63]:
+# In[44]:
 
 
 learn.freeze_to(-2)
 learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
 
 
-# In[64]:
+# In[45]:
 
 
 learn.save('clas_1')
 
 
-# In[65]:
+# In[46]:
 
 
 learn.unfreeze()
 learn.fit(lrs, 1, wds=0, cycle_len=14, use_clr=(32,10))
 
 
-# In[66]:
+# In[47]:
 
 
 learn.save("clas_full")
@@ -485,7 +494,7 @@ learn.save("clas_full")
 
 # #### Evaluate
 
-# In[67]:
+# In[48]:
 
 
 learn.load("clas_full")
@@ -493,7 +502,7 @@ learn.model.reset()
 _ = learn.model.eval()
 
 
-# In[68]:
+# In[49]:
 
 
 learn.model.eval()
@@ -503,7 +512,7 @@ for x, y in tqdm_notebook(val_dl):
     ys.append(y.cpu().numpy())
 
 
-# In[69]:
+# In[50]:
 
 
 preds = np.concatenate(preds)
@@ -511,43 +520,43 @@ ys = np.concatenate(ys)
 preds.shape, ys.shape
 
 
-# In[70]:
+# In[51]:
 
 
 pd.Series(ys).value_counts()
 
 
-# In[71]:
+# In[52]:
 
 
 pd.Series(preds).value_counts()
 
 
-# In[72]:
+# In[53]:
 
 
 np.sum(ys==preds) / ys.shape[0]
 
 
-# In[73]:
+# In[54]:
 
 
 np.where(ys==0)
 
 
-# In[77]:
+# In[55]:
 
 
 tokens_val[176196]
 
 
-# In[76]:
+# In[56]:
 
 
 sp.DecodeIds(tokens_val[176196].tolist()), df_val["comment"].iloc[176196]
 
 
-# In[79]:
+# In[57]:
 
 
 def get_prediction(texts):
@@ -555,26 +564,26 @@ def get_prediction(texts):
     return learn.model(input_tensor)[0].data.cpu().numpy()
 
 
-# In[80]:
+# In[58]:
 
 
 get_prediction("看 了 快 一半 了 才 发现 是 mini 的 广告")
 
 
-# In[81]:
+# In[59]:
 
 
 get_prediction("妈蛋 ， 简直 太 好看 了 。 最后 的 DJ battle 部分 ， 兴奋 的 我 ， 简直 想 从 座位 上 站 起来 一起 扭")
 
 
-# In[82]:
+# In[60]:
 
 
 get_prediction("说 实话 我 没 怎么 认真 看 ， 电影院 里 的 熊 孩子 太 闹腾 了 ， 前面 的 小奶娃 还 时不时 站 "
                "在 老爸 腿上 蹦迪 ， 观影 体验 极差 ， 不过 小朋友 应该 挺 喜欢 的")
 
 
-# In[83]:
+# In[61]:
 
 
 get_prediction("这 电影 太 好笑 了 ， 说好 的 高科技 人才 研制 的 产品 永远 在 关键 时候 失灵 "
@@ -582,7 +591,7 @@ get_prediction("这 电影 太 好笑 了 ， 说好 的 高科技 人才 研制
                "当 诱饵 … … 显然 这样 的 对战 坚持不了 多久 ， 只能 赶紧 让 鲨鱼 输 了 。")
 
 
-# In[84]:
+# In[62]:
 
 
 get_prediction("太 接地气 了 ， 在 三亚 煮饺子 式 的 景区 海域 ， 冒出来 一条 大 鲨鱼 "
@@ -590,25 +599,25 @@ get_prediction("太 接地气 了 ， 在 三亚 煮饺子 式 的 景区 海域
                "老外 ， 中文 台词 有点 尬 。")
 
 
-# In[85]:
+# In[63]:
 
 
 get_prediction("李冰冰 的 脸 真的 很 紧绷 ， 比 鲨鱼 的 脸 还 绷 。")
 
 
-# In[86]:
+# In[64]:
 
 
 get_prediction("太 难 了 。 。 。")
 
 
-# In[87]:
+# In[65]:
 
 
 get_prediction("把 我 基神 写成 智障 ， 辣鸡 mcu")
 
 
-# In[88]:
+# In[66]:
 
 
 get_prediction("鲨鱼 部分 还是 不错 的 ， 尤其 是 中段 第一次 出海 捕鲨 非常 刺激 ， 其后 急速 下滑 ， "
@@ -617,13 +626,13 @@ get_prediction("鲨鱼 部分 还是 不错 的 ， 尤其 是 中段 第一次 
                "把 节奏 也 拖垮 了 ， 明明 可以 更 出色 ， 却 很遗憾 地 止步 在 马马虎虎 的 水平 。 6 / 10")
 
 
-# In[89]:
+# In[67]:
 
 
 get_prediction("老冰冰 真的 很努力 ！ 为 老冰冰 实现 了 她 的 好莱坞 女主梦 鼓掌 . . .")
 
 
-# In[90]:
+# In[68]:
 
 
 get_prediction("结局 简直 丧 出 天际 ！ 灭霸 竟然 有 内心戏 ！ 全程 下来 美队 "
@@ -631,38 +640,38 @@ get_prediction("结局 简直 丧 出 天际 ！ 灭霸 竟然 有 内心戏 ！
                "要 重修 旧好 了 ！ ")
 
 
-# In[91]:
+# In[69]:
 
 
 get_prediction("太 烂 了 ， 难看 至极 。")
 
 
-# In[92]:
+# In[70]:
 
 
 get_prediction("看完 之后 很 生气 ！ 剧情 太差 了")
 
 
-# In[93]:
+# In[71]:
 
 
 get_prediction("关键点 都 好傻 ， 我 知道 你 要拍 续集 ， "
                "我 知道 未来 可以 被 重写 ， 但 那 一拳 真的 有点 傻 。")
 
 
-# In[94]:
+# In[72]:
 
 
 get_prediction("好了 可以 了 。 再也 不看 Marvel 了 。 我 努力 过 了 。 实在 是 。 。 啥呀 这是 。 🙄️")
 
 
-# In[95]:
+# In[73]:
 
 
 get_prediction("还 我 电影票 14 元")
 
 
-# In[96]:
+# In[74]:
 
 
 cnf_matrix = confusion_matrix(ys, preds)
@@ -675,7 +684,7 @@ plot_confusion_matrix(
     title='Confusion matrix, without normalization')
 
 
-# In[97]:
+# In[75]:
 
 
 plot_confusion_matrix(
@@ -683,13 +692,211 @@ plot_confusion_matrix(
     title='Confusion matrix, without normalization')
 
 
-# In[98]:
+# In[76]:
 
 
 from sklearn.metrics import precision_recall_fscore_support
 precision, recall, fscore, support = precision_recall_fscore_support(ys, preds)
 for i in range(3):
     print(f"Class {i}: P {precision[i]*100:.0f}%, R {recall[i]*100:.0f}%, FS {fscore[i]:.2f}, Support: {support[i]}")
+
+
+# In[77]:
+
+
+test_ds = TextDataset(tokens_test, df_test.label.values)
+test_samp = SortSampler(tokens_test, key=lambda x: len(tokens_test[x]))
+test_dl = DataLoader(test_ds, bs, transpose=True, num_workers=1, pad_idx=0, sampler=test_samp)
+
+
+# In[78]:
+
+
+learn.model.eval()
+preds, ys = [], []
+for x, y in tqdm_notebook(test_dl):
+    preds.append(np.argmax(learn.model(x)[0].cpu().data.numpy(), axis=1))
+    ys.append(y.cpu().numpy())
+
+
+# In[79]:
+
+
+preds = np.concatenate(preds)
+ys = np.concatenate(ys)
+preds.shape, ys.shape
+
+
+# In[80]:
+
+
+np.sum(ys==preds) / ys.shape[0]
+
+
+# In[81]:
+
+
+cnf_matrix = confusion_matrix(ys, preds)
+np.set_printoptions(precision=2)
+
+# Plot non-normalized confusion matrix
+plt.figure()
+plot_confusion_matrix(
+    cnf_matrix, classes=[0, 1, 2],
+    title='Confusion matrix, without normalization')
+
+
+# In[82]:
+
+
+plot_confusion_matrix(
+    cnf_matrix, classes=[0, 1, 2], normalize=True,
+    title='Confusion matrix, without normalization')
+
+
+# In[83]:
+
+
+from sklearn.metrics import precision_recall_fscore_support
+precision, recall, fscore, support = precision_recall_fscore_support(ys, preds)
+for i in range(3):
+    print(f"Class {i}: P {precision[i]*100:.0f}%, R {recall[i]*100:.0f}%, FS {fscore[i]:.2f}, Support: {support[i]}")
+
+
+# ### Smaller Dataset 
+
+# In[84]:
+
+
+df_train.reset_index(drop=True, inplace=True)
+df_val.reset_index(drop=True, inplace=True)
+
+
+# In[85]:
+
+
+df_train_small = pd.concat([
+    df_train[df_train.label==0].sample(15000),
+    df_train[df_train.label==1].sample(15000),
+    df_train[df_train.label==2].sample(15000)
+], axis=0)
+df_val_small = pd.concat([
+    df_val[df_val.label==0].sample(5000),
+    df_val[df_val.label==1].sample(5000),
+    df_val[df_val.label==2].sample(5000)
+], axis=0)
+
+
+# In[86]:
+
+
+np.array(df_train_small.index)
+
+
+# In[87]:
+
+
+bs = 64
+tokens_train_small = np.array(tokens_train)[np.array(df_train_small.index)]
+tokens_val_small = np.array(tokens_val)[np.array(df_val_small.index)]
+trn_ds = TextDataset(tokens_train_small, df_train_small.label.values)
+val_ds = TextDataset(tokens_val_small, df_val_small.label.values)
+trn_samp = SortishSampler(tokens_train_small, key=lambda x: len(tokens_train_small[x]), bs=bs//2)
+val_samp = SortSampler(tokens_val_small, key=lambda x: len(tokens_val_small[x]))
+trn_dl = DataLoader(trn_ds, bs//2, transpose=True, num_workers=1, pad_idx=0, sampler=trn_samp)
+val_dl = DataLoader(val_ds, bs, transpose=True, num_workers=1, pad_idx=0, sampler=val_samp)
+model_data = ModelData(path, trn_dl, val_dl)
+
+
+# In[88]:
+
+
+dps = np.array([0.4,0.5,0.05,0.3,0.4])
+opt_fn = partial(torch.optim.Adam, betas=(0.7, 0.99))
+bptt = 50
+
+
+# In[89]:
+
+
+model = get_rnn_classifier(bptt, bptt*2, 3, n_toks, emb_sz=EMB_DIM, n_hid=500, n_layers=3, pad_token=0,
+          layers=[EMB_DIM*3, 50, 3], drops=[dps[4], 0.1],
+          dropouti=dps[0], wdrop=dps[1], dropoute=dps[2], dropouth=dps[3])
+
+
+# In[90]:
+
+
+learn = RNN_Learner(model_data, TextModel(to_gpu(model)), opt_fn=opt_fn)
+learn.reg_fn = partial(seq2seq_reg, alpha=2, beta=1)
+learn.clip=25.
+learn.metrics = [accuracy]
+learn.load_encoder('lm1_enc')
+
+
+# In[91]:
+
+
+learn.freeze_to(-1)
+learn.lr_find(lrs/100)
+learn.sched.plot()
+
+
+# In[92]:
+
+
+lr=1e-3
+lrm = 2.6
+lrs = np.array([lr/(lrm**4), lr/(lrm**3), lr/(lrm**2), lr/lrm, lr])
+learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
+
+
+# In[93]:
+
+
+learn.freeze_to(-2)
+learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
+
+
+# In[94]:
+
+
+learn.unfreeze()
+learn.fit(lrs, 1, wds=0, cycle_len=14, use_clr=(32,10))
+
+
+# In[95]:
+
+
+learn.save("clas_small_full")
+
+
+# In[96]:
+
+
+learn.model.eval()
+preds, ys = [], []
+for x, y in val_dl:
+    preds.append(np.argmax(learn.model(x)[0].cpu().data.numpy(), axis=1))
+    ys.append(y.cpu().numpy())
+
+
+# In[97]:
+
+
+preds = np.concatenate(preds)
+ys = np.concatenate(ys)
+preds.shape, ys.shape
+
+
+# In[98]:
+
+
+cnf_matrix = confusion_matrix(ys, preds)
+np.set_printoptions(precision=2)
+plot_confusion_matrix(
+    cnf_matrix, classes=[0, 1, 2], normalize=True,
+    title='Confusion matrix, without normalization')
 
 
 # In[99]:
@@ -721,7 +928,7 @@ preds.shape, ys.shape
 # In[102]:
 
 
-np.sum(ys==preds) / ys.shape[0]
+np.sum(preds==ys) / preds.shape[0]
 
 
 # In[103]:
@@ -729,210 +936,12 @@ np.sum(ys==preds) / ys.shape[0]
 
 cnf_matrix = confusion_matrix(ys, preds)
 np.set_printoptions(precision=2)
-
-# Plot non-normalized confusion matrix
-plt.figure()
 plot_confusion_matrix(
-    cnf_matrix, classes=[0, 1, 2],
+    cnf_matrix, classes=[0, 1, 2], normalize=True,
     title='Confusion matrix, without normalization')
 
 
 # In[104]:
-
-
-plot_confusion_matrix(
-    cnf_matrix, classes=[0, 1, 2], normalize=True,
-    title='Confusion matrix, without normalization')
-
-
-# In[105]:
-
-
-from sklearn.metrics import precision_recall_fscore_support
-precision, recall, fscore, support = precision_recall_fscore_support(ys, preds)
-for i in range(3):
-    print(f"Class {i}: P {precision[i]*100:.0f}%, R {recall[i]*100:.0f}%, FS {fscore[i]:.2f}, Support: {support[i]}")
-
-
-# ### Smaller Dataset 
-
-# In[106]:
-
-
-df_train.reset_index(drop=True, inplace=True)
-df_val.reset_index(drop=True, inplace=True)
-
-
-# In[107]:
-
-
-df_train_small = pd.concat([
-    df_train[df_train.label==0].sample(15000),
-    df_train[df_train.label==1].sample(15000),
-    df_train[df_train.label==2].sample(15000)
-], axis=0)
-df_val_small = pd.concat([
-    df_val[df_val.label==0].sample(5000),
-    df_val[df_val.label==1].sample(5000),
-    df_val[df_val.label==2].sample(5000)
-], axis=0)
-
-
-# In[108]:
-
-
-np.array(df_train_small.index)
-
-
-# In[109]:
-
-
-bs = 64
-tokens_train_small = np.array(tokens_train)[np.array(df_train_small.index)]
-tokens_val_small = np.array(tokens_val)[np.array(df_val_small.index)]
-trn_ds = TextDataset(tokens_train_small, df_train_small.label.values)
-val_ds = TextDataset(tokens_val_small, df_val_small.label.values)
-trn_samp = SortishSampler(tokens_train_small, key=lambda x: len(tokens_train_small[x]), bs=bs//2)
-val_samp = SortSampler(tokens_val_small, key=lambda x: len(tokens_val_small[x]))
-trn_dl = DataLoader(trn_ds, bs//2, transpose=True, num_workers=1, pad_idx=0, sampler=trn_samp)
-val_dl = DataLoader(val_ds, bs, transpose=True, num_workers=1, pad_idx=0, sampler=val_samp)
-model_data = ModelData(path, trn_dl, val_dl)
-
-
-# In[110]:
-
-
-dps = np.array([0.4,0.5,0.05,0.3,0.4])
-opt_fn = partial(torch.optim.Adam, betas=(0.7, 0.99))
-bptt = 50
-
-
-# In[111]:
-
-
-model = get_rnn_classifier(bptt, bptt*2, 3, n_toks, emb_sz=EMB_DIM, n_hid=500, n_layers=3, pad_token=0,
-          layers=[EMB_DIM*3, 50, 3], drops=[dps[4], 0.1],
-          dropouti=dps[0], wdrop=dps[1], dropoute=dps[2], dropouth=dps[3])
-
-
-# In[112]:
-
-
-learn = RNN_Learner(model_data, TextModel(to_gpu(model)), opt_fn=opt_fn)
-learn.reg_fn = partial(seq2seq_reg, alpha=2, beta=1)
-learn.clip=25.
-learn.metrics = [accuracy]
-learn.load_encoder('lm1_enc')
-
-
-# In[113]:
-
-
-learn.freeze_to(-1)
-learn.lr_find(lrs/100)
-learn.sched.plot()
-
-
-# In[114]:
-
-
-lr=1e-3
-lrm = 2.6
-lrs = np.array([lr/(lrm**4), lr/(lrm**3), lr/(lrm**2), lr/lrm, lr])
-learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
-
-
-# In[115]:
-
-
-learn.freeze_to(-2)
-learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
-
-
-# In[116]:
-
-
-learn.unfreeze()
-learn.fit(lrs, 1, wds=0, cycle_len=14, use_clr=(32,10))
-
-
-# In[117]:
-
-
-learn.save("clas_small_full")
-
-
-# In[118]:
-
-
-learn.model.eval()
-preds, ys = [], []
-for x, y in val_dl:
-    preds.append(np.argmax(learn.model(x)[0].cpu().data.numpy(), axis=1))
-    ys.append(y.cpu().numpy())
-
-
-# In[119]:
-
-
-preds = np.concatenate(preds)
-ys = np.concatenate(ys)
-preds.shape, ys.shape
-
-
-# In[120]:
-
-
-cnf_matrix = confusion_matrix(ys, preds)
-np.set_printoptions(precision=2)
-plot_confusion_matrix(
-    cnf_matrix, classes=[0, 1, 2], normalize=True,
-    title='Confusion matrix, without normalization')
-
-
-# In[121]:
-
-
-test_ds = TextDataset(tokens_test, df_test.label.values)
-test_samp = SortSampler(tokens_test, key=lambda x: len(tokens_test[x]))
-test_dl = DataLoader(test_ds, bs, transpose=True, num_workers=1, pad_idx=0, sampler=test_samp)
-
-
-# In[122]:
-
-
-learn.model.eval()
-preds, ys = [], []
-for x, y in tqdm_notebook(test_dl):
-    preds.append(np.argmax(learn.model(x)[0].cpu().data.numpy(), axis=1))
-    ys.append(y.cpu().numpy())
-
-
-# In[123]:
-
-
-preds = np.concatenate(preds)
-ys = np.concatenate(ys)
-preds.shape, ys.shape
-
-
-# In[124]:
-
-
-np.sum(preds==ys) / preds.shape[0]
-
-
-# In[125]:
-
-
-cnf_matrix = confusion_matrix(ys, preds)
-np.set_printoptions(precision=2)
-plot_confusion_matrix(
-    cnf_matrix, classes=[0, 1, 2], normalize=True,
-    title='Confusion matrix, without normalization')
-
-
-# In[126]:
 
 
 precision, recall, fscore, support = precision_recall_fscore_support(ys, preds)
@@ -942,7 +951,7 @@ for i in range(3):
 
 # ## Regressor
 
-# In[127]:
+# In[105]:
 
 
 bs = 64
@@ -955,7 +964,7 @@ val_dl = DataLoader(val_ds, bs, transpose=True, num_workers=1, pad_idx=0, sample
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[128]:
+# In[106]:
 
 
 dps = np.array([0.4,0.5,0.05,0.3,0.4]) * 0.5
@@ -963,7 +972,7 @@ opt_fn = partial(torch.optim.Adam, betas=(0.7, 0.99))
 bptt = 50
 
 
-# In[129]:
+# In[107]:
 
 
 model = get_rnn_classifier(bptt, bptt*2, 3, n_toks, emb_sz=EMB_DIM, n_hid=500, n_layers=3, pad_token=0,
@@ -971,7 +980,7 @@ model = get_rnn_classifier(bptt, bptt*2, 3, n_toks, emb_sz=EMB_DIM, n_hid=500, n
           dropouti=dps[0], wdrop=dps[1], dropoute=dps[2], dropouth=dps[3])
 
 
-# In[130]:
+# In[108]:
 
 
 class RNN_RegLearner(RNN_Learner):
@@ -981,7 +990,7 @@ class RNN_RegLearner(RNN_Learner):
     def _get_crit(self, data): return lambda x, y: F.mse_loss(x[:, 0], y)
 
 
-# In[131]:
+# In[109]:
 
 
 learn = RNN_RegLearner(model_data, TextModel(to_gpu(model)), opt_fn=opt_fn)
@@ -991,7 +1000,7 @@ learn.metrics = []
 learn.load_encoder('lm1_enc')
 
 
-# In[134]:
+# In[110]:
 
 
 lr=2e-4
@@ -999,7 +1008,7 @@ lrm = 2.6
 lrs = np.array([lr/(lrm**4), lr/(lrm**3), lr/(lrm**2), lr/lrm, lr])
 
 
-# In[133]:
+# In[111]:
 
 
 learn.freeze_to(-1)
@@ -1007,14 +1016,14 @@ learn.lr_find(lrs/1000)
 learn.sched.plot()
 
 
-# In[135]:
+# In[112]:
 
 
 learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
 learn.save('reg_0')
 
 
-# In[136]:
+# In[113]:
 
 
 learn.freeze_to(-2)
@@ -1022,7 +1031,7 @@ learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
 learn.save('reg_1')
 
 
-# In[137]:
+# In[114]:
 
 
 learn.unfreeze()
@@ -1030,14 +1039,14 @@ learn.fit(lrs, 1, wds=0, cycle_len=14, use_clr=(32,10))
 learn.save('reg_full')
 
 
-# In[138]:
+# In[115]:
 
 
 # Export Model
 torch.save(learn.model, path / "sentiment_model.pth")
 
 
-# In[139]:
+# In[116]:
 
 
 learn.load('reg_full')
@@ -1045,7 +1054,7 @@ learn.load('reg_full')
 
 # ### Evaluation
 
-# In[140]:
+# In[117]:
 
 
 test_ds = TextDataset(tokens_test, df_test.rating.values)
@@ -1053,7 +1062,7 @@ test_samp = SortSampler(tokens_test, key=lambda x: len(tokens_test[x]))
 test_dl = DataLoader(test_ds, bs, transpose=True, num_workers=1, pad_idx=0, sampler=test_samp)
 
 
-# In[141]:
+# In[118]:
 
 
 def get_preds(data_loader):
@@ -1070,32 +1079,32 @@ ys, preds = get_preds(val_dl)
 preds.shape, ys.shape
 
 
-# In[142]:
+# In[119]:
 
 
 pd.Series(ys).describe()
 
 
-# In[143]:
+# In[120]:
 
 
 pd.Series(ys).describe()
 
 
-# In[144]:
+# In[121]:
 
 
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[145]:
+# In[122]:
 
 
 preds = np.clip(preds, 1, 5)
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[146]:
+# In[123]:
 
 
 # Save predictions
@@ -1104,27 +1113,27 @@ df_val.to_csv(path / "df_val.csv.gz", index=False, compression="gzip")
 df_val.head()
 
 
-# In[147]:
+# In[124]:
 
 
 np.sum(np.square(df_val.rating.values - df_val.preds.values)) / preds.shape[0]
 
 
-# In[148]:
+# In[125]:
 
 
 ys, preds = get_preds(test_dl)
 preds.shape, ys.shape
 
 
-# In[149]:
+# In[126]:
 
 
 preds = np.clip(preds, 1, 5)
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[150]:
+# In[127]:
 
 
 # Save predictions
@@ -1133,25 +1142,25 @@ df_test.to_csv(path / "df_test.csv.gz", index=False, compression="gzip")
 df_test.head()
 
 
-# In[151]:
+# In[128]:
 
 
 df_test.sample(20)
 
 
-# In[152]:
+# In[129]:
 
 
 np.sum(np.square(df_test.rating.values - df_test.preds.values)) / preds.shape[0]
 
 
-# In[153]:
+# In[130]:
 
 
 preds_class = np.round(preds)
 
 
-# In[154]:
+# In[131]:
 
 
 cnf_matrix = confusion_matrix(ys, preds_class)
@@ -1164,7 +1173,7 @@ plot_confusion_matrix(
     title='Confusion matrix, without normalization')
 
 
-# In[155]:
+# In[132]:
 
 
 from sklearn.metrics import precision_recall_fscore_support
@@ -1173,7 +1182,7 @@ for i in range(5):
     print(f"Class {i}: P {precision[i]*100:.0f}%, R {recall[i]*100:.0f}%, FS {fscore[i]:.2f}, Support: {support[i]}")
 
 
-# In[158]:
+# In[133]:
 
 
 def get_prediction(texts):
@@ -1181,50 +1190,50 @@ def get_prediction(texts):
     return learn.model(input_tensor)[0].data.cpu().numpy()[0, 0]
 
 
-# In[159]:
+# In[134]:
 
 
 get_prediction("看 了 快 一半 了 才 发现 是 mini 的 广告")
 
 
-# In[160]:
+# In[135]:
 
 
 get_prediction("妈蛋 ， 简直 太 好看 了 。 最后 的 DJ battle 部分 ， 兴奋 的 我 ， 简直 想 从 座位 上 站 起来 一起 扭")
 
 
-# In[163]:
+# In[136]:
 
 
 get_prediction("关键点 都 好傻 ， 我 知道 你 要拍 续集 ， "
                "我 知道 未来 可以 被 重写 ， 但 那 一拳 真的 有点 傻 。")
 
 
-# In[166]:
+# In[137]:
 
 
 get_prediction("李冰冰 的 脸 真的 很 紧绷 ， 比 鲨鱼 的 脸 还 绷 。")
 
 
-# In[165]:
+# In[138]:
 
 
 get_prediction("太 烂 了 ， 难看 至极 。")
 
 
-# In[164]:
+# In[139]:
 
 
 get_prediction("看完 之后 很 生气 ！ 剧情 太差 了")
 
 
-# In[162]:
+# In[140]:
 
 
 get_prediction("好了 可以 了 。 再也 不看 Marvel 了 。 我 努力 过 了 。 实在 是 。 。 啥呀 这是 。 🙄️")
 
 
-# In[161]:
+# In[141]:
 
 
 get_prediction("还 我 电影票 14 元")
