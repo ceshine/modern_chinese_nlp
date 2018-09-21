@@ -65,7 +65,7 @@ def get_proba(rows):
     probs = []
     for texts in rows:
         model.reset()
-        texts = re.sub(r"\s+", "", texts)
+        texts = re.sub(r"\s+", " ", texts)
         texts.replace("qqq", " ")
         input_tensor = torch.from_numpy(
             np.array([1] + sp.EncodeAsIds(texts))
