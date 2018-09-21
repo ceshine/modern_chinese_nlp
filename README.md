@@ -16,7 +16,11 @@ Pre-built docker image: [docker pull ceshine/pytorch-fastai](https://hub.docker.
 * Sentiment Analysis (Douban Movie Reviews): movie rating prediction.
 
 ### Word-level Models
-(TODO)
+
+* Language Model (Wikipedia Articles): next character prediction.
+* Sentiment Analysis (Douban Movie Reviews): movie rating prediction.
 
 ### Sub-Word-Level Models
-(TODO)
+
+* Language Model (Wikipedia Articles): next character prediction.
+* Sentiment Analysis (Douban Movie Reviews): movie rating prediction.
