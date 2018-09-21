@@ -132,7 +132,7 @@ cnt.most_common(10)
 cnt.most_common(VOC_SIZE_WORD)[-10:]
 
 
-# In[76]:
+# In[11]:
 
 
 mapping = {
@@ -148,17 +148,23 @@ n_toks = len(itos) + 1
 len(itos)
 
 
-# In[144]:
+# In[12]:
 
 
 voc_diff = set(mapping.keys()) - set(mapping_orig.keys())
 sorted([(x, mapping[x]) for x in list(voc_diff)], key=lambda x: x[1], reverse=True)[:50]
 
 
-# In[12]:
+# In[13]:
 
 
 itos[-10:]
+
+
+# In[14]:
+
+
+joblib.dump(mapping, str(path / "mapping_word.pkl"))
 
 
 # ### Tokenize
@@ -1126,60 +1132,4 @@ from sklearn.metrics import precision_recall_fscore_support
 precision, recall, fscore, support = precision_recall_fscore_support(ys, preds_class)
 for i in range(5):
     print(f"Class {i}: P {precision[i]*100:.0f}%, R {recall[i]*100:.0f}%, FS {fscore[i]:.2f}, Support: {support[i]}")
-
-
-# In[177]:
-
-
-def get_prediction(texts):
-    input_tensor = T(np.array([1] + [mapping.get(x, UNK) for x in texts])).unsqueeze(1)
-    return learn.model(input_tensor)[0].data.cpu().numpy()[0, 0]
-
-
-# In[178]:
-
-
-get_prediction("看了快一半了才发现是mini的广告")
-
-
-# In[179]:
-
-
-get_prediction("妈蛋，简直太好看了。最后的DJ battle部分，兴奋的我，简直想从座位上站起来一起扭")
-
-
-# In[180]:
-
-
-get_prediction("说实话我没怎么认真看，电影院里的熊孩子太闹腾了，前面的小奶娃还时不时站在老爸腿上蹦迪，观影体验极差，不过小朋友应该挺喜欢的")
-
-
-# In[181]:
-
-
-get_prediction("李冰冰的脸真的很紧绷，比鲨鱼的脸还绷。")
-
-
-# In[182]:
-
-
-get_prediction("太烂了，难看至极。")
-
-
-# In[183]:
-
-
-get_prediction("还我电影票14元")
-
-
-# In[184]:
-
-
-get_prediction("好了可以了。再也不看Marvel了。我努力过了。实在是。。啥呀这是。🙄️")
-
-
-# In[185]:
-
-
-get_prediction("把我基神写成智障，辣鸡mcu")
 
