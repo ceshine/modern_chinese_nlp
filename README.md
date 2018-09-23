@@ -4,6 +4,10 @@ My humble contribution to the democratization of the Chinese NLP technology (cur
 
 [**WIP**] This project is still in a very early development stage. Things might change dramatically in the near future.
 
+Blog post(s):
+
+1. [[Preview] Developing Modern Chinese NLP Models](https://medium.com/the-artificial-impostor/preview-developing-modern-chinese-nlp-models-60d4774ebfa7) - Briefly described dataset preparation processes and some preliminary results.
+
 ## Environment
 
 Pre-built docker image: [docker pull ceshine/pytorch-fastai](https://hub.docker.com/r/ceshine/pytorch-fastai/). Or build the image yourself with the accompanied Dockerfile.
