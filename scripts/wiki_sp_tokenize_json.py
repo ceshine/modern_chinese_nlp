@@ -64,9 +64,10 @@ def fit_model(seg_word=True, algorithm="bpe"):
     spm.SentencePieceTrainer.Train(
         '--input={} --model_prefix={} --vocab_size={} '
         '--input_sentence_size=20000000 '
-        '--character_coverage=0.995 --model_type=bpe'.format(
+        '--character_coverage=0.995 --model_type={algorithm}'.format(
             TMPPATH_WORD if seg_word else TMPPATH,
-            MODEL_PREFIX.format(algorithm=algorithm), VOC_SIZE
+            MODEL_PREFIX.format(algorithm=algorithm),
+            VOC_SIZE, algorithm="unigram"
         )
     )
 
@@ -90,7 +91,7 @@ def tokenize(seg_word=True, algorithm="bpe"):
 def main(word, bpe):
     seg_word = True if word else False
     algorithm = "bpe" if bpe else "unigram"
-    # fit_model(seg_word, algorithm)
+    fit_model(seg_word, algorithm)
     tokenize(seg_word, algorithm)
 
 
