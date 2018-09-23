@@ -9,7 +9,7 @@ DATAPATH = "data/ratings.csv"
 TMPPATH = "/tmp/ratings.txt"
 TMPPATH_WORD = "/tmp/ratings_word.txt"
 TARGETPATH = "data/ratings_word.csv"
-MODEL_PREFIX = "data/rating_bpe_model"
+MODEL_PREFIX = "data/rating_{algorithm}_model"
 
 VOC_SIZE = 7500
 PAD = 0
@@ -40,7 +40,16 @@ def main():
         '--input={} --model_prefix={} --vocab_size={} '
         '--input_sentence_size=20000000 '
         '--character_coverage=0.995 --model_type=bpe'.format(
-            TMPPATH_WORD, MODEL_PREFIX, VOC_SIZE
+            TMPPATH_WORD, MODEL_PREFIX.format(algorithm="bpe"), VOC_SIZE
+        )
+    )
+
+    # Train Unigram Model
+    spm.SentencePieceTrainer.Train(
+        '--input={} --model_prefix={} --vocab_size={} '
+        '--input_sentence_size=20000000 '
+        '--character_coverage=0.995 --model_type=unigram'.format(
+            TMPPATH_WORD, MODEL_PREFIX.format(algorithm="unigram"), VOC_SIZE
         )
     )
 
