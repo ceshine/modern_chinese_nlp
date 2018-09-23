@@ -9,7 +9,7 @@ import numpy as np
 from tqdm import tqdm
 from opencc import OpenCC
 
-from tokenize_json import clean_text, filter_texts, SECTION_BLACKLIST
+from wiki_tokenize_json import clean_text, filter_texts, SECTION_BLACKLIST
 
 DATAPATH = "/mnt/Intel/zhwiki.json.gz"
 TMPPATH = "/mnt/Intel/tmp_texts.txt"
