@@ -2,6 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+.vscode
 *.csv
 *#
 *~
@@ -24,3 +25,4 @@ data/
 plots
 *.zip
 *.npy
+*Copy*
