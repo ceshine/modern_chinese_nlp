@@ -84,14 +84,17 @@ class Attention(nn.Module):
         self.attn_dropout = nn.Dropout(cfg.attn_pdrop)
         self.resid_dropout = nn.Dropout(cfg.resid_pdrop)
 
+    def _future_blind_softmax(self, w):
+        # TF implem method: mask_attn_weights
+        mask = self.b[:, :, :w.size(2), :w.size(2)]
+        w = w * mask + -1e9 * (1 - mask)
+        return nn.Softmax(dim=-1)(w)
+
     def _attn(self, q, k, v):
         w = torch.matmul(q, k)
         if self.scale:
             w = w / math.sqrt(v.size(-1))
-        # TF implem method: mask_attn_weights
-        mask = self.b[:, :, :w.size(2), :w.size(2)]
-        w = w * mask + -1e9 * (1 - mask)
-        w = nn.Softmax(dim=-1)(w)
+        w = self._future_blind_softmax(w)
         w = self.attn_dropout(w)
         return torch.matmul(w, v)
 
