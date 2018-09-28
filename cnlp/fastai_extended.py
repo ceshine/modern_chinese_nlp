@@ -6,7 +6,8 @@ import numpy as np
 import fastai.text
 from fastai.core import BasicModel, to_gpu
 from fastai.nlp import RNN_Learner
-from fastai.lm_rnn import SequentialRNN
+from fastai.lm_rnn import SequentialRNN, LinearBlock
+# from fastai.dataloader import DataLoader
 
 from .transformer_decoder import TransformerEncoder
 
@@ -17,27 +18,34 @@ class LanguageModelLoader:
     allocates cuda memory in order to prevent multiple buffers from being created as the batch width grows.
     """
 
-    MAX_PLUS = 5 * 5
+    MAX_PLUS = 25
 
     def __init__(self,
                  nums: np.array,
                  bs: int,
                  bptt: int,
+                 target_length: int,
                  backwards: bool = False,
-                 batch_first: bool = False):
+                 batch_first: bool = False,
+                 randomize_bptt: bool = False):
         self.bs, self.bptt, self.backwards = bs, bptt, backwards
         self.batch_first = batch_first
         self.data = self.batchify(nums)
         self.i, self.iter = 0, 0
         self.n = self.data.size(1) if self.batch_first else self.data.size(0)
+        self.randomize_bptt = randomize_bptt
+        self.target_length = target_length
 
     @property
     def max_possible_seq_len(self) -> int:
+        if self.randomize_bptt:
+            return self.bptt
         return self.bptt + self.MAX_PLUS
 
     def __iter__(self):
         self.i, self.iter = 0, 0
         while self.i < self.n - 1 and self.iter < len(self):
+            if self.randomize_bptt:
             if self.i == 0:
                 seq_len = self.bptt + 5 * 5
             else:
@@ -48,6 +56,8 @@ class LanguageModelLoader:
                     min(
                         int(np.random.normal(bptt, 5)),
                         self.max_possible_seq_len))
+            else:
+                seq_len = self.bptt
             if self.i + seq_len >= self.n:
                 # ditch residuals
                 break
@@ -71,12 +81,15 @@ class LanguageModelLoader:
 
     def get_batch(self, i, seq_len):
         source = self.data
+        target_offset = max(0, seq_len - self.target_length)
         if self.batch_first:
             return (source[:, i:(i + seq_len)].contiguous(),
-                    source[:, (i + 1):(i + 1 + seq_len)].contiguous().view(-1))
+                    source[:, (i + 1 + target_offset):(
+                        i + 1 + seq_len)].contiguous().view(-1))
         else:
             return (source[i:(i + seq_len)].contiguous(),
-                    source[(i + 1):(i + 1 + seq_len)].contiguous().view(-1))
+                    source[(i + 1 + target_offset):(
+                        i + 1 + seq_len)].contiguous().view(-1))
 
 
 class TransformerLanguageModel(BasicModel):
@@ -88,21 +101,28 @@ class TransformerLanguageModel(BasicModel):
 class LanguageModelData(fastai.text.LanguageModelData):
     def get_transformer_model(self, opt_fn, emb_sz, max_seq_len, **kwargs):
         m = get_transformer_language_model(
-            self.n_tok, max_seq_len, emb_sz, pad_token=self.pad_idx, **kwargs)
+            self.n_tok,
+            max_seq_len,
+            self.trn_dl.target_length,
+            emb_sz,
+            pad_token=self.pad_idx,
+            **kwargs)
         model = TransformerLanguageModel(to_gpu(m))
         return RNN_Learner(self, model, opt_fn=opt_fn)
 
 
 class FlattenPredictions(nn.Module):
-    def __init__(self):
+    def __init__(self, target_len: int):
         super().__init__()
+        self.target_len = target_len
 
     def forward(self, x):
-        return x.view(-1, x.size(2))
+        return x[:, -self.target_len:, :].contiguous().view(-1, x.size(2))
 
 
 def get_transformer_language_model(n_tok: int,
                                    max_seq_len: int,
+                                   target_length: int,
                                    emb_sz: int,
                                    n_head: int,
                                    n_layer: int,
