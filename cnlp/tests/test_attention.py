@@ -4,7 +4,6 @@ import pytest
 from cnlp.transformer_decoder import Attention, dotdict
 
 
-# content of test_class.py
 class TestAttention:
     @classmethod
     def setup_class(cls):
