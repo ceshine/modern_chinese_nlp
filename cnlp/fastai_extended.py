@@ -38,7 +38,7 @@ class LanguageModelLoader:
 
     @property
     def max_possible_seq_len(self) -> int:
-        if self.randomize_bptt:
+        if self.randomize_bptt is False:
             return self.bptt
         return self.bptt + self.MAX_PLUS
 
@@ -46,16 +46,16 @@ class LanguageModelLoader:
         self.i, self.iter = 0, 0
         while self.i < self.n - 1 and self.iter < len(self):
             if self.randomize_bptt:
-            if self.i == 0:
-                seq_len = self.bptt + 5 * 5
-            else:
-                bptt = self.bptt if np.random.random(
-                ) < 0.95 else self.bptt / 2.
-                seq_len = max(
-                    5,
-                    min(
-                        int(np.random.normal(bptt, 5)),
-                        self.max_possible_seq_len))
+                if self.i == 0:
+                    seq_len = self.bptt + 5 * 5
+                else:
+                    bptt = self.bptt if np.random.random(
+                    ) < 0.95 else self.bptt / 2.
+                    seq_len = max(
+                        5,
+                        min(
+                            int(np.random.normal(bptt, 5)),
+                            self.max_possible_seq_len))
             else:
                 seq_len = self.bptt
             if self.i + seq_len >= self.n:
@@ -145,4 +145,60 @@ def get_transformer_language_model(n_tok: int,
     decoder = nn.Linear(emb_sz, n_tok, bias=False)
     decoder.weight = nn.Parameter(
         enc.embed.weight[:-max_seq_len])  # Tied weights
-    return SequentialRNN(enc, decoder, FlattenPredictions())
+    return SequentialRNN(enc, decoder, FlattenPredictions(target_length))
+
+
+class PoolingLinearClassifier(nn.Module):
+    def __init__(self, layers, drops, batch_first=False):
+        super().__init__()
+        self.batch_first = batch_first
+        self.layers = nn.ModuleList([
+            LinearBlock(layers[i], layers[i + 1], drops[i])
+            for i in range(len(layers) - 1)
+        ])
+
+    def pool(self, x, bs, is_max):
+        f = F.adaptive_max_pool1d if is_max else F.adaptive_avg_pool1d
+        if self.batch_first:
+            return f(x.permute(0, 2, 1), (1, )).view(bs, -1)
+        return f(x.permute(1, 2, 0), (1, )).view(bs, -1)
+
+    def forward(self, output):
+        if self.batch_first:
+            sl, bs, _ = output.size()
+        else:
+            bs, sl, _ = output.size()
+        avgpool = self.pool(output, bs, False)
+        mxpool = self.pool(output, bs, True)
+        x = torch.cat([output[-1], mxpool, avgpool], 1)
+        for l in self.layers:
+            l_x = l(x)
+            x = F.relu(l_x)
+        return l_x
+
+
+def get_transformer_classifier(n_tok: int,
+                               max_seq_len: int,
+                               emb_sz: int,
+                               n_head: int,
+                               n_layer: int,
+                               clf_layers: int,
+                               pad_token: int,
+                               embd_pdrop: float = 0.1,
+                               attn_pdrop: float = 0.1,
+                               resid_pdrop: float = 0.1,
+                               clf_pdrop: float = 0.1,
+                               afn: str = 'gelu'):
+    enc = TransformerEncoder(
+        vocab=n_tok,
+        n_ctx=max_seq_len,
+        n_embd=emb_sz,
+        n_head=n_head,
+        n_layer=n_layer,
+        pad_token=pad_token,
+        embd_pdrop=embd_pdrop,
+        attn_pdrop=attn_pdrop,
+        resid_pdrop=resid_pdrop,
+        afn=afn)
+    classifier = PoolingLinearClassifier(clf_layers, clf_pdrop)
+    return SequentialRNN(enc, classifier)
