@@ -44,27 +44,27 @@ class LayerNorm(nn.Module):
         return self.g * x + self.b
 
 
-class Conv1D(nn.Module):
-    def __init__(self, nf, rf, nx):
-        super(Conv1D, self).__init__()
-        self.rf = rf
-        self.nf = nf
-        if rf == 1:  # faster 1x1 conv
-            w = torch.empty(nx, nf)
-            nn.init.normal_(w, std=0.02)
-            self.w = Parameter(w)
-            self.b = Parameter(torch.zeros(nf))
-        else:  # was used to train LM
-            raise NotImplementedError
+# class Conv1D(nn.Module):
+#     def __init__(self, nf, rf, nx):
+#         super(Conv1D, self).__init__()
+#         self.rf = rf
+#         self.nf = nf
+#         if rf == 1:  # faster 1x1 conv
+#             w = torch.empty(nx, nf)
+#             nn.init.normal_(w, std=0.02)
+#             self.w = Parameter(w)
+#             self.b = Parameter(torch.zeros(nf))
+#         else:  # was used to train LM
+#             raise NotImplementedError
 
-    def forward(self, x):
-        if self.rf == 1:
-            size_out = x.size()[:-1] + (self.nf, )
-            x = torch.addmm(self.b, x.view(-1, x.size(-1)), self.w)
-            x = x.view(*size_out)
-        else:
-            raise NotImplementedError
-        return x
+#     def forward(self, x):
+#         if self.rf == 1:
+#             size_out = x.size()[:-1] + (self.nf, )
+#             x = torch.addmm(self.b, x.view(-1, x.size(-1)), self.w)
+#             x = x.view(*size_out)
+#         else:
+#             raise NotImplementedError
+#         return x
 
 
 class Attention(nn.Module):
@@ -79,10 +79,15 @@ class Attention(nn.Module):
         self.n_head = cfg.n_head
         self.split_size = n_state
         self.scale = scale
-        self.c_attn = Conv1D(n_state * 3, 1, nx)
-        self.c_proj = Conv1D(n_state, 1, nx)
+        self.c_attn = nn.Linear(nx, n_state * 3)  # Conv1D(n_state * 3, 1, nx)
+        self.c_proj = nn.Linear(nx, n_state)  # Conv1D(n_state, 1, nx)
         self.attn_dropout = nn.Dropout(cfg.attn_pdrop)
         self.resid_dropout = nn.Dropout(cfg.resid_pdrop)
+
+        nn.init.kaiming_normal_(self.c_attn.weight)
+        nn.init.kaiming_normal_(self.c_proj.weight)
+        nn.init.constant_(self.c_attn.bias, 0)
+        nn.init.constant_(self.c_proj.bias, 0)
 
     def _future_blind_softmax(self, w):
         # TF implem method: mask_attn_weights
@@ -94,8 +99,9 @@ class Attention(nn.Module):
         w = torch.matmul(q, k)
         if self.scale:
             w = w / math.sqrt(v.size(-1))
-        w = self._future_blind_softmax(w)
+        # Makes more sense to perform dropout before softmax?
         w = self.attn_dropout(w)
+        w = self._future_blind_softmax(w)
         return torch.matmul(w, v)
 
     def merge_heads(self, x):
@@ -128,10 +134,15 @@ class MLP(nn.Module):
     def __init__(self, n_state, cfg):  # in MLP: n_state=3072 (4 * n_embd)
         super(MLP, self).__init__()
         nx = cfg.n_embd
-        self.c_fc = Conv1D(n_state, 1, nx)
-        self.c_proj = Conv1D(nx, 1, n_state)
+        self.c_fc = nn.Linear(nx, n_state)  # Conv1D(n_state, 1, nx)
+        self.c_proj = nn.Linear(n_state, nx)  # Conv1D(nx, 1, n_state)
         self.act = ACT_FNS[cfg.afn]
         self.dropout = nn.Dropout(cfg.resid_pdrop)
+
+        nn.init.kaiming_normal_(self.c_fc.weight)
+        nn.init.kaiming_normal_(self.c_proj.weight)
+        nn.init.constant_(self.c_fc.bias, 0)
+        nn.init.constant_(self.c_proj.bias, 0)
 
     def forward(self, x):
         h = self.act(self.c_fc(x))
@@ -153,32 +164,6 @@ class Block(nn.Module):
         n = self.ln_1(x + a)
         m = self.mlp(n)
         h = self.ln_2(n + m)
-        return h
-
-
-class TransformerModel(nn.Module):
-    """ Transformer model """
-
-    def __init__(self, cfg, vocab=40990, n_ctx=512):
-        super(TransformerModel, self).__init__()
-        self.vocab = vocab
-        self.embed = nn.Embedding(vocab, cfg.n_embd)
-        self.drop = nn.Dropout(cfg.embd_pdrop)
-        block = Block(n_ctx, cfg, scale=True)
-        self.h = nn.ModuleList(
-            [copy.deepcopy(block) for _ in range(cfg.n_layer)])
-        self.decoder = nn.Linear(cfg.n_embd, vocab, bias=False)
-        self.decoder.weight = self.embed.weight  # Tied weights
-
-        nn.init.normal_(self.embed.weight, std=0.02)
-
-    def forward(self, x):
-        x = x.view(-1, x.size(-2), x.size(-1))
-        e = self.embed(x)
-        # Add the position information to the input embeddings
-        h = e.sum(dim=2)
-        for block in self.h:
-            h = block(h)
         return h
 
 
