@@ -3,6 +3,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset
 import numpy as np
 
 import fastai.text
@@ -133,6 +134,35 @@ class ShuffledLanguageModelLoader(LanguageModelLoader):
             yield res
 
 
+class TextDataset(Dataset):
+    def __init__(self,
+                 x,
+                 y,
+                 backwards=False,
+                 sos=None,
+                 eos=None,
+                 max_seq_len=-1,
+                 cut_tail=True):
+        self.x, self.y, self.backwards, self.sos, self.eos = x, y, backwards, sos, eos
+        self.max_seq_len = max_seq_len
+        self.cut_tail = cut_tail
+
+    def __getitem__(self, idx):
+        x = self.x[idx]
+        if self.max_seq_len > 0:
+            if self.cut_tail:
+                x = x[:self.max_seq_len]
+            else:
+                x = x[-self.max_seq_len:]
+        if self.backwards: x = list(reversed(x))
+        if self.eos is not None: x = x + [self.eos]
+        if self.sos is not None: x = [self.sos] + x
+        return np.array(x), self.y[idx]
+
+    def __len__(self):
+        return len(self.x)
+
+
 class TransformerLanguageModel(BasicModel):
     def get_layer_groups(self):
         enc = self.model[0]
@@ -191,16 +221,21 @@ def get_transformer_language_model(n_tok: int,
 
 
 class LinearBlock(nn.Module):
-    def __init__(self, ni, nf, drop):
+    def __init__(self, ni, nf, drop, norm=True):
         super().__init__()
         self.lin = nn.Linear(ni, nf)
         self.drop = nn.Dropout(drop)
-        self.ln = LayerNorm(ni)
+        self.norm = norm
+        if norm:
+            self.ln = LayerNorm(nf)
         nn.init.kaiming_normal_(self.lin.weight)
         nn.init.constant_(self.lin.bias, 0)
 
     def forward(self, x):
-        return self.lin(self.drop(self.ln(x)))
+        if self.norm:
+            return self.ln(self.lin(self.drop(x)))
+        else:
+            return self.lin(self.drop(x))
 
 
 class PoolingLinearClassifier(nn.Module):
@@ -208,8 +243,11 @@ class PoolingLinearClassifier(nn.Module):
         super().__init__()
         self.batch_first = batch_first
         self.layers = nn.ModuleList([
-            LinearBlock(layers[i], layers[i + 1], drops[i])
-            for i in range(len(layers) - 1)
+            LinearBlock(
+                layers[i],
+                layers[i + 1],
+                drops[i],
+                norm=(i != len(layers) - 2)) for i in range(len(layers) - 1)
         ])
 
     def pool(self, x, bs, is_max):
@@ -240,8 +278,11 @@ class MLP(nn.Module):
         super().__init__()
         self.batch_first = batch_first
         self.layers = nn.ModuleList([
-            LinearBlock(layers[i], layers[i + 1], drops[i])
-            for i in range(len(layers) - 1)
+            LinearBlock(
+                layers[i],
+                layers[i + 1],
+                drops[i],
+                norm=(i != len(layers) - 2)) for i in range(len(layers) - 1)
         ])
 
     def forward(self, output):
@@ -255,27 +296,30 @@ class MLP(nn.Module):
         return l_x
 
 
-class TruncateSequence(nn.Module):
-    def __init__(self, max_seq_len: int):
-        super().__init__()
-        self.max_seq_len = max_seq_len
+# class TruncateSequence(nn.Module):
+#     def __init__(self, max_seq_len: int):
+#         super().__init__()
+#         self.max_seq_len = max_seq_len
 
-    def forward(self, x):
-        # Use the end of the sequences
-        return x[:, -self.max_seq_len:]
+#     def forward(self, x):
+#         # Use the end of the sequences
+#         return x[:, -self.max_seq_len:]
+
+# class TruncatedTransformerLearner(RNN_Learner):
+#     def save_encoder(self, name):
+#         save_model(self.model[0], self.get_model_path(name))
+
+#     def load_encoder(self, name):
+#         load_model(self.model[0], self.get_model_path(name))
 
 
-class TruncatedTransformerLearner(RNN_Learner):
-    def save_encoder(self, name):
-        save_model(self.model[1], self.get_model_path(name))
-
-    def load_encoder(self, name):
-        load_model(self.model[1], self.get_model_path(name))
+class TransformerLearner(RNN_Learner):
+    def fit(self, *args, **kwargs):
+        return super().fit(*args, **kwargs, seq_first=False)
 
 
 def get_transformer_classifier(n_tok: int,
                                n_ctx: int,
-                               max_seq_len: int,
                                emb_sz: int,
                                n_head: int,
                                n_layer: int,
@@ -286,7 +330,6 @@ def get_transformer_classifier(n_tok: int,
                                resid_pdrop: float = 0.1,
                                clf_pdrop: float = 0.1,
                                afn: str = 'gelu'):
-    assert n_ctx >= max_seq_len
     enc = TransformerEncoder(
         vocab=n_tok,
         n_ctx=n_ctx,
@@ -299,11 +342,11 @@ def get_transformer_classifier(n_tok: int,
         resid_pdrop=resid_pdrop,
         afn=afn)
     classifier = MLP(clf_layers, clf_pdrop, batch_first=True)
-    return SequentialRNN(TruncateSequence(max_seq_len), enc, classifier)
+    return SequentialRNN(enc, classifier)
 
 
 class TransformerTextModel(BasicModel):
     def get_layer_groups(self):
-        enc = self.model[1]
-        clf = self.model[2]
+        enc = self.model[0]
+        clf = self.model[1]
         return [enc.embed, *enc.blocks, clf]

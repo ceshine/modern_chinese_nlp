@@ -28,6 +28,64 @@ def swish(x):
 ACT_FNS = {'relu': nn.ReLU, 'swish': swish, 'gelu': gelu}
 
 
+def dropout_mask(x, sz, dropout):
+    """ Applies a dropout mask whose size is determined by passed argument 'sz'.
+    Args:
+        x (nn.Variable): A torch Variable object
+        sz (tuple(int, int, int)): The expected size of the new tensor
+        dropout (float): The dropout fraction to apply
+
+    This method uses the bernoulli distribution to decide which activations to keep.
+    Additionally, the sampled activations is rescaled is using the factor 1/(1 - dropout).
+
+    In the example given below, one can see that approximately .8 fraction of the
+    returned tensors are zero. Rescaling with the factor 1/(1 - 0.8) returns a tensor
+    with 5's in the unit places.
+
+    The official link to the pytorch bernoulli function is here:
+        http://pytorch.org/docs/master/torch.html#torch.bernoulli
+
+    Examples:
+        >>> a_Var = torch.autograd.Variable(torch.Tensor(2, 3, 4).uniform_(0, 1), requires_grad=False)
+        >>> a_Var
+            Variable containing:
+            (0 ,.,.) =
+              0.6890  0.5412  0.4303  0.8918
+              0.3871  0.7944  0.0791  0.5979
+              0.4575  0.7036  0.6186  0.7217
+            (1 ,.,.) =
+              0.8354  0.1690  0.1734  0.8099
+              0.6002  0.2602  0.7907  0.4446
+              0.5877  0.7464  0.4257  0.3386
+            [torch.FloatTensor of size 2x3x4]
+        >>> a_mask = dropout_mask(a_Var.data, (1,a_Var.size(1),a_Var.size(2)), dropout=0.8)
+        >>> a_mask
+            (0 ,.,.) =
+              0  5  0  0
+              0  0  0  5
+              5  0  5  0
+            [torch.FloatTensor of size 1x3x4]
+    """
+    return x.new(*sz).bernoulli_(1 - dropout) / (1 - dropout)
+
+
+class LockedDropout(nn.Module):
+    def __init__(self, p=0.5, dim=1):
+        super().__init__()
+        self.p = p
+        assert dim in (1, 2)
+        self.dim = dim
+
+    def forward(self, x):
+        if not self.training or not self.p: return x
+        with torch.set_grad_enabled(False):
+            if self.dim == 1:
+                mask = dropout_mask(x.data, (1, x.size(1), x.size(2)), self.p)
+            else:
+                mask = dropout_mask(x.data, (x.size(0), 1, x.size(2)), self.p)
+        return mask * x
+
+
 class LayerNorm(nn.Module):
     "Construct a layernorm module in the OpenAI style (epsilon inside the square root)."
 
@@ -82,7 +140,7 @@ class Attention(nn.Module):
         self.c_attn = nn.Linear(nx, n_state * 3)  # Conv1D(n_state * 3, 1, nx)
         self.c_proj = nn.Linear(nx, n_state)  # Conv1D(n_state, 1, nx)
         self.attn_dropout = nn.Dropout(cfg.attn_pdrop)
-        self.resid_dropout = nn.Dropout(cfg.resid_pdrop)
+        self.resid_dropout = LockedDropout(cfg.resid_pdrop, dim=1)
 
         nn.init.kaiming_normal_(self.c_attn.weight)
         nn.init.kaiming_normal_(self.c_proj.weight)
@@ -92,16 +150,16 @@ class Attention(nn.Module):
     def _future_blind_softmax(self, w):
         # TF implem method: mask_attn_weights
         mask = self.b[:, :, :w.size(2), :w.size(2)]
-        w = w * mask + -1e9 * (1 - mask)
+        w = w.masked_fill(mask == 0, -1e9)
         return nn.Softmax(dim=-1)(w)
 
     def _attn(self, q, k, v):
+        # w shape: batch_size, n_head, seq_len, seq_len
         w = torch.matmul(q, k)
         if self.scale:
             w = w / math.sqrt(v.size(-1))
-        # Makes more sense to perform dropout before softmax?
-        w = self.attn_dropout(w)
         w = self._future_blind_softmax(w)
+        w = self.attn_dropout(w)
         return torch.matmul(w, v)
 
     def merge_heads(self, x):
@@ -188,7 +246,7 @@ class TransformerEncoder(nn.Module):
         super().__init__()
         self.vocab = vocab
         self.embed = nn.Embedding(vocab + n_ctx, n_embd, padding_idx=pad_token)
-        self.drop = nn.Dropout(embd_pdrop)
+        self.drop = LockedDropout(embd_pdrop, dim=1)
         cfg = dotdict({
             "n_head": n_head,
             "n_embd": n_embd,
@@ -216,7 +274,7 @@ class TransformerEncoder(nn.Module):
         with torch.set_grad_enabled(self.training):
             e = self.embed(x)
             # Add the position information to the input embeddings
-            h = e.sum(dim=2)
+            h = self.drop(e.sum(dim=2))
             for block in self.blocks:
                 h = block(h)
         return h
@@ -321,42 +379,42 @@ class SimilarityHead(nn.Module):
         return sim_logits
 
 
-class DoubleHeadModel(nn.Module):
-    """ Transformer with language model and task specific heads """
+# class DoubleHeadModel(nn.Module):
+#     """ Transformer with language model and task specific heads """
 
-    def __init__(self, cfg, clf_token, task_head_type, vocab=40990, n_ctx=512):
-        super(DoubleHeadModel, self).__init__()
-        self.transformer = TransformerModel(cfg, vocab=vocab, n_ctx=n_ctx)
-        self.lm_head = LMHead(self.transformer, cfg)
-        if isinstance(task_head_type, str):
-            if task_head_type == 'multiple_choice':
-                self.task_head = MultipleChoiceHead(clf_token, cfg)
-            elif task_head_type == 'similarity':
-                self.task_head = SimilarityHead(clf_token, cfg)
-            elif task_head_type == 'inference':
-                # the three classes correspond to entailment, contradiction and neutral.
-                self.task_head = ClfHead(clf_token, cfg, 3)
-            else:
-                raise ValueError(
-                    "task_head_type is expected to be 'multiple_choice' "
-                    "'similarity', 'inference' or ('classification', n_class) "
-                    f"got {task_head_type}.")
-        elif isinstance(task_head_type, collections.abc.Sequence) and len(task_head_type) == 2 and \
-                task_head_type[0] == 'classification':
-            n_class = task_head_type[1]
-            self.task_head = ClfHead(clf_token, cfg, n_class)
-        else:
-            raise ValueError(
-                "task_head_type is expected to be 'multiple_choice' "
-                "'similarity', 'inference' or ('classification', n_class) "
-                f"got {task_head_type}.")
+#     def __init__(self, cfg, clf_token, task_head_type, vocab=40990, n_ctx=512):
+#         super(DoubleHeadModel, self).__init__()
+#         self.transformer = TransformerModel(cfg, vocab=vocab, n_ctx=n_ctx)
+#         self.lm_head = LMHead(self.transformer, cfg)
+#         if isinstance(task_head_type, str):
+#             if task_head_type == 'multiple_choice':
+#                 self.task_head = MultipleChoiceHead(clf_token, cfg)
+#             elif task_head_type == 'similarity':
+#                 self.task_head = SimilarityHead(clf_token, cfg)
+#             elif task_head_type == 'inference':
+#                 # the three classes correspond to entailment, contradiction and neutral.
+#                 self.task_head = ClfHead(clf_token, cfg, 3)
+#             else:
+#                 raise ValueError(
+#                     "task_head_type is expected to be 'multiple_choice' "
+#                     "'similarity', 'inference' or ('classification', n_class) "
+#                     f"got {task_head_type}.")
+#         elif isinstance(task_head_type, collections.abc.Sequence) and len(task_head_type) == 2 and \
+#                 task_head_type[0] == 'classification':
+#             n_class = task_head_type[1]
+#             self.task_head = ClfHead(clf_token, cfg, n_class)
+#         else:
+#             raise ValueError(
+#                 "task_head_type is expected to be 'multiple_choice' "
+#                 "'similarity', 'inference' or ('classification', n_class) "
+#                 f"got {task_head_type}.")
 
-    def forward(self, x):
-        h = self.transformer(x)
-        lm_logits = self.lm_head(h)
-        task_logits = self.task_head(h, x)
+#     def forward(self, x):
+#         h = self.transformer(x)
+#         lm_logits = self.lm_head(h)
+#         task_logits = self.task_head(h, x)
 
-        return lm_logits, task_logits
+#         return lm_logits, task_logits
 
 
 class dotdict(dict):

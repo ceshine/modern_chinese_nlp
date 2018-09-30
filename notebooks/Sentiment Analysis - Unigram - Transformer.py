@@ -6,6 +6,7 @@
 
 import sys
 sys.path.append("../")
+sys.path.append("../fastai/")
 
 
 # In[2]:
@@ -30,8 +31,7 @@ import numpy as np
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.metrics import precision_recall_fscore_support
 from fastai.text import (
-    TextDataset, SortishSampler, SortSampler, DataLoader, ModelData, seq2seq_reg, 
-    RNN_Learner, TextModel, to_gpu
+    SortishSampler, SortSampler, DataLoader, ModelData, to_gpu
 )
 from fastai.core import T
 from fastai.rnn_reg import EmbeddingDropout
@@ -47,7 +47,7 @@ import sentencepiece as spm
 
 from cnlp.fastai_extended import (
     LanguageModelLoader, LanguageModelData, get_transformer_classifier, 
-    TransformerTextModel, TruncatedTransformerLearner
+    TransformerTextModel, TextDataset, TransformerLearner
 )
 
 get_ipython().run_line_magic('matplotlib', 'inline')
@@ -134,7 +134,7 @@ EMB_DIM = 300
 # ### Use the Refitted Vocabulary
 # #### Investigate Vocabulary Differences
 
-# In[9]:
+# In[16]:
 
 
 itos_orig = []
@@ -190,10 +190,10 @@ for df, tokens in zip((df_train, df_val, df_test), (tokens_train, tokens_val, to
 assert len(tokens_train) == df_train.shape[0]        
 
 
-# In[48]:
+# In[22]:
 
 
-joblib.dump([tokens_train, tokens_val, tokens_test], "../data/cache/rating_unigram_tokens.pkl")
+joblib.dump([n_toks, tokens_train, tokens_val, tokens_test], "../data/cache/rating_unigram_tokens.pkl")
 
 
 # In[15]:
@@ -380,7 +380,7 @@ del learner
 
 # ### Full Dataset (v1)
 
-# In[17]:
+# In[10]:
 
 
 for df in (df_train, df_val, df_test):
@@ -431,7 +431,7 @@ model= get_transformer_classifier(
 # In[21]:
 
 
-learn = TruncatedTransformerLearner(
+learn = TransformerLearner(
     model_data, 
     TransformerTextModel(to_gpu(model)), 
     opt_fn=partial(torch.optim.Adam, betas=(0.9, 0.999)))
@@ -760,14 +760,29 @@ for i in range(3):
 
 # ### Smaller Dataset 
 
-# In[21]:
+# In[9]:
+
+
+n_toks, tokens_train, tokens_val, tokens_test = joblib.load("../data/cache/rating_unigram_tokens.pkl")
+
+
+# In[10]:
+
+
+for df in (df_train, df_val, df_test):
+    df["label"] = (df["rating"] >= 3) * 1
+    df.loc[df.rating == 3, "label"] = 1
+    df.loc[df.rating > 3, "label"] = 2
+
+
+# In[11]:
 
 
 df_train.reset_index(drop=True, inplace=True)
 df_val.reset_index(drop=True, inplace=True)
 
 
-# In[22]:
+# In[12]:
 
 
 df_train_small = pd.concat([
@@ -782,20 +797,20 @@ df_val_small = pd.concat([
 ], axis=0)
 
 
-# In[23]:
+# In[13]:
 
 
 np.array(df_train_small.index)
 
 
-# In[50]:
+# In[14]:
 
 
 bs = 64
 tokens_train_small = np.array(tokens_train)[np.array(df_train_small.index)]
 tokens_val_small = np.array(tokens_val)[np.array(df_val_small.index)]
-trn_ds = TextDataset(tokens_train_small, df_train_small.label.values)
-val_ds = TextDataset(tokens_val_small, df_val_small.label.values)
+trn_ds = TextDataset(tokens_train_small, df_train_small.label.values, max_seq_len=200)
+val_ds = TextDataset(tokens_val_small, df_val_small.label.values, max_seq_len=200)
 trn_samp = SortishSampler(tokens_train_small, key=lambda x: len(tokens_train_small[x]), bs=bs//2)
 val_samp = SortSampler(tokens_val_small, key=lambda x: len(tokens_val_small[x]))
 trn_dl = DataLoader(trn_ds, bs//2, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
@@ -803,7 +818,7 @@ val_dl = DataLoader(val_ds, bs, transpose=False, num_workers=1, pad_idx=2, sampl
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[158]:
+# In[22]:
 
 
 model= get_transformer_classifier(
@@ -812,21 +827,20 @@ model= get_transformer_classifier(
     n_head=12, 
     n_layer=3, 
     n_ctx=200,
-    max_seq_len=50,
-    clf_layers=[EMB_DIM*3, 50, 3],
+    clf_layers=[EMB_DIM, 50, 3],
     pad_token=2,
-    embd_pdrop=0.1,
-    attn_pdrop=0.25,
-    resid_pdrop=0.25,
+    embd_pdrop=0.05,
+    attn_pdrop=0.1,
+    resid_pdrop=0.1,
     clf_pdrop=[0.5, 0.2],
     afn="gelu"
-)    
+)
 
 
-# In[159]:
+# In[23]:
 
 
-learn = TruncatedTransformerLearner(
+learn = TransformerLearner(
     model_data, 
     TransformerTextModel(to_gpu(model)), 
     opt_fn=partial(torch.optim.Adam, betas=(0.9, 0.999)))
@@ -835,7 +849,7 @@ learn.metrics = [accuracy]
 learn.load_encoder('lm1_enc')
 
 
-# In[160]:
+# In[50]:
 
 
 lrs = np.array([1e-5, 1e-4, 1e-4, 1e-4, 2e-4])
@@ -844,34 +858,56 @@ learn.lr_find(lrs/100)
 learn.sched.plot()
 
 
-# In[161]:
+# In[24]:
 
 
+learn.freeze_to(-1)
 lrs = np.array([1e-5, 1e-4, 2e-4, 5e-4, 1e-3])
-learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
+learn.fit(lrs, 1, wds=1e-6, cycle_len=1, use_clr=(8,3), use_wd_sched=True)
 
 
-# In[162]:
+# In[18]:
+
+
+# Debug Purpose Only
+learn.model.eval()
+preds, ys, logloss, batch_cnts = [], [], [], []
+with torch.set_grad_enabled(False):
+    for x, y in tqdm_notebook(model_data.val_dl):
+        tmp = learn.model(x).cpu()
+        batch_cnts.append(x.shape[0])
+        logloss.append(F.cross_entropy(tmp, y.cpu()).data.numpy())
+        preds.append(np.argmax(tmp.cpu().data.numpy(), axis=1))
+        ys.append(y.cpu().numpy())
+logloss = np.array(logloss)
+preds = np.concatenate(preds)
+ys = np.concatenate(ys)
+batch_cnts = np.array(batch_cnts)
+print(preds.shape, ys.shape)
+ np.average(logloss, 0, weights=batch_cnts), np.mean(preds==ys)
+
+
+# In[26]:
 
 
 learn.freeze_to(-2)
-learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
+learn.fit(lrs, 1, wds=1e-6, cycle_len=1, use_clr=(8,3), use_wd_sched=True)
 
 
-# In[163]:
+# In[27]:
 
 
 learn.unfreeze()
-learn.fit(lrs, 1, wds=0, cycle_len=10, use_clr=(32,10))
+learn.fit(lrs, 1, wds=1e-6, cycle_len=10, use_clr=(32,10), use_wd_sched=True)
 
 
-# In[164]:
+# In[28]:
 
 
 learn.save("clas_small_full")
 
 
-# In[166]:
+# In[29]:
 
 
 learn.model.eval()
@@ -881,7 +917,7 @@ for x, y in val_dl:
     ys.append(y.cpu().numpy())
 
 
-# In[167]:
+# In[30]:
 
 
 preds = np.concatenate(preds)
@@ -889,7 +925,13 @@ ys = np.concatenate(ys)
 preds.shape, ys.shape
 
 
-# In[168]:
+# In[31]:
+
+
+np.sum(preds==ys) / preds.shape[0]
+
+
+# In[32]:
 
 
 cnf_matrix = confusion_matrix(ys, preds)
@@ -899,15 +941,15 @@ plot_confusion_matrix(
     title='Confusion matrix, without normalization')
 
 
-# In[169]:
+# In[33]:
 
 
-test_ds = TextDataset(tokens_test, df_test.label.values)
+test_ds = TextDataset(tokens_test, df_test.label.values, max_seq_len=200)
 test_samp = SortSampler(tokens_test, key=lambda x: len(tokens_test[x]))
-test_dl = DataLoader(test_ds, bs, transpose=True, num_workers=1, pad_idx=0, sampler=test_samp)
+test_dl = DataLoader(test_ds, bs, transpose=False, num_workers=1, pad_idx=2, sampler=test_samp)
 
 
-# In[180]:
+# In[34]:
 
 
 learn.model.eval()
@@ -917,21 +959,16 @@ for x, y in tqdm_notebook(test_dl):
     ys.append(y.cpu().numpy())
 
 
-# In[181]:
+# In[35]:
 
 
 preds = np.concatenate(preds)
 ys = np.concatenate(ys)
-preds.shape, ys.shape
-
-
-# In[182]:
-
-
+print(preds.shape, ys.shape)
 np.sum(preds==ys) / preds.shape[0]
 
 
-# In[183]:
+# In[36]:
 
 
 cnf_matrix = confusion_matrix(ys, preds)
@@ -941,7 +978,7 @@ plot_confusion_matrix(
     title='Confusion matrix, without normalization')
 
 
-# In[187]:
+# In[37]:
 
 
 precision, recall, fscore, support = precision_recall_fscore_support(ys, preds)
@@ -951,12 +988,18 @@ for i in range(3):
 
 # ## Regressor
 
-# In[28]:
+# In[38]:
 
 
-bs = 64
-trn_ds = TextDataset(tokens_train, df_train.rating.values.astype("float32"))
-val_ds = TextDataset(tokens_val, df_val.rating.values.astype("float32"))
+n_toks, tokens_train, tokens_val, tokens_test = joblib.load("../data/cache/rating_unigram_tokens.pkl")
+
+
+# In[39]:
+
+
+bs = 128
+trn_ds = TextDataset(tokens_train, df_train.rating.values.astype("float32"), max_seq_len=200)
+val_ds = TextDataset(tokens_val, df_val.rating.values.astype("float32"), max_seq_len=200)
 trn_samp = SortishSampler(tokens_train, key=lambda x: len(tokens_train[x]), bs=bs//2)
 val_samp = SortSampler(tokens_val, key=lambda x: len(tokens_val[x]))
 trn_dl = DataLoader(trn_ds, bs//2, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
@@ -964,20 +1007,20 @@ val_dl = DataLoader(val_ds, bs, transpose=False, num_workers=1, pad_idx=2, sampl
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[29]:
+# In[69]:
 
 
 tmp = next(iter(trn_dl))
 tmp[0].size()
 
 
-# In[30]:
+# In[70]:
 
 
-tmp[0][2, :300]
+tmp[0][2, :]
 
 
-# In[39]:
+# In[71]:
 
 
 model= get_transformer_classifier(
@@ -986,28 +1029,27 @@ model= get_transformer_classifier(
     n_head=12, 
     n_layer=3, 
     n_ctx=200,
-    max_seq_len=200,
-    clf_layers=[EMB_DIM, 50, 1],
+    clf_layers=[EMB_DIM, 100, 1],
     pad_token=2,
-    embd_pdrop=0.1,
-    attn_pdrop=0.25,
-    resid_pdrop=0.25,
-    clf_pdrop=[0.5, 0.1],
+    embd_pdrop=0.05,
+    attn_pdrop=0.1,
+    resid_pdrop=0.1,
+    clf_pdrop=[0.5, 0.2],
     afn="gelu"
 )    
 
 
-# In[40]:
+# In[72]:
 
 
-class TruncatedTransformerRegLearner(TruncatedTransformerLearner):
+class TruncatedTransformerRegLearner(TransformerLearner):
     def __init__(self, data, models, **kwargs):
         super().__init__(data, models, **kwargs)
 
     def _get_crit(self, data): return lambda x, y: F.mse_loss(x[:, 0], y)
 
 
-# In[41]:
+# In[73]:
 
 
 learn = TruncatedTransformerRegLearner(
@@ -1018,46 +1060,52 @@ learn.clip=25
 learn.load_encoder('lm1_enc')
 
 
-# In[42]:
+# In[74]:
 
 
-lrs = np.array([5e-5, 1e-4, 2e-4, 5e-4, 2e-4])
+learn.model[1]
+
+
+# In[75]:
+
+
+lrs = np.array([5e-5, 1e-4, 2e-4, 5e-4, 1e-3])
 learn.freeze_to(-1)
 learn.lr_find(lrs/1000)
 learn.sched.plot()
 
 
-# In[43]:
+# In[76]:
 
 
-learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
+lrs = np.array([5e-5, 1e-4, 2e-4, 5e-4, 1e-3])
+get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))')
 learn.save('reg_0')
 
 
-# In[44]:
+# In[77]:
 
 
-learn.freeze_to(-2)
-learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))
-learn.save('reg_1')
+learn.freeze_to(-3)
+get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))')
 
 
-# In[45]:
+# In[80]:
 
 
 learn.unfreeze()
-get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=0, cycle_len=8, use_clr=(32,5))')
+get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=1e-6, cycle_len=12, use_clr=(32,5), use_wd_sched=True)')
 learn.save('reg_full')
 
 
-# In[37]:
+# In[21]:
 
 
 # Export Model
 torch.save(learn.model, path / "sentiment_model.pth")
 
 
-# In[38]:
+# In[53]:
 
 
 learn.load('reg_full')
@@ -1065,69 +1113,68 @@ learn.load('reg_full')
 
 # ### Evaluation
 
-# In[121]:
-
-
-test_ds = TextDataset(tokens_test, df_test.rating.values)
-test_samp = SortSampler(tokens_test, key=lambda x: len(tokens_test[x]))
-test_dl = DataLoader(test_ds, bs, transpose=True, num_workers=1, pad_idx=0, sampler=test_samp)
-
-
-# In[122]:
+# In[54]:
 
 
 def get_preds(data_loader):
-    learn.model.eval()
-    learn.model.reset()         
+    learn.model.train()       
     preds, ys = [], []
     for x, y in tqdm_notebook(data_loader):   
-        preds.append(learn.model(x)[0].cpu().data.numpy()[:, 0])
-        ys.append(y.cpu().numpy())
+        with torch.set_grad_enabled(False):
+            preds.append(learn.model(x).cpu().data.numpy()[:, 0])
+            ys.append(y.cpu().numpy())
     preds = np.concatenate(preds)
     ys = np.concatenate(ys)
     return ys, preds
+
+
+# In[56]:
+
+
 ys, preds = get_preds(val_dl)
-preds.shape, ys.shape
+print("(Validation set):", preds.shape, ys.shape)
+np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[123]:
+# In[57]:
+
+
+pd.Series(preds).describe()
+
+
+# In[62]:
+
+
+test_ds = TextDataset(tokens_test, df_test.rating.values, max_seq_len=200)
+test_samp = SortSampler(tokens_test, key=lambda x: len(tokens_test[x]))
+test_dl = DataLoader(test_ds, bs, transpose=False, num_workers=1, pad_idx=2, sampler=test_samp)
+
+
+# In[63]:
+
+
+ys, preds = get_preds(test_dl)
+print("(Test set):", preds.shape, ys.shape)
+np.sum(np.square(preds - ys)) / preds.shape[0]
+
+
+# In[64]:
 
 
 pd.Series(ys).describe()
 
 
-# In[124]:
-
-
-pd.Series(ys).describe()
-
-
-# In[125]:
+# In[65]:
 
 
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[126]:
+# In[66]:
 
 
 preds = np.clip(preds, 1, 5)
 np.sum(np.square(preds - ys)) / preds.shape[0]
-
-
-# In[127]:
-
-
-# Save predictions
-df_val.loc[df_val.iloc[list(iter(val_samp))].index, "preds"] = preds
-df_val.to_csv(path / "df_val.csv.gz", index=False, compression="gzip")
-df_val.head()
-
-
-# In[128]:
-
-
-np.sum(np.square(df_val.rating.values - df_val.preds.values)) / preds.shape[0]
 
 
 # In[129]:
