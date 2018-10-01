@@ -47,7 +47,7 @@ import sentencepiece as spm
 
 from cnlp.fastai_extended import (
     LanguageModelLoader, LanguageModelData, get_transformer_classifier, 
-    TransformerTextModel, TextDataset, TransformerLearner
+    TransformerTextModel, TextDataset, TransformerLearner, FixedLengthDataLoader
 )
 
 get_ipython().run_line_magic('matplotlib', 'inline')
@@ -131,6 +131,13 @@ BEG = 1
 EMB_DIM = 300
 
 
+# In[37]:
+
+
+sp = spm.SentencePieceProcessor()
+sp.Load("../data/rating_unigram_model.model")
+
+
 # ### Use the Refitted Vocabulary
 # #### Investigate Vocabulary Differences
 
@@ -171,13 +178,6 @@ sorted([(x, mapping[x]) for x in list(voc_diff)], key=lambda x: x[1], reverse=Tr
 
 
 # #### Tokenize
-
-# In[13]:
-
-
-sp = spm.SentencePieceProcessor()
-sp.Load("../data/rating_unigram_model.model")
-
 
 # In[14]:
 
@@ -803,7 +803,7 @@ df_val_small = pd.concat([
 np.array(df_train_small.index)
 
 
-# In[14]:
+# In[19]:
 
 
 bs = 64
@@ -813,12 +813,12 @@ trn_ds = TextDataset(tokens_train_small, df_train_small.label.values, max_seq_le
 val_ds = TextDataset(tokens_val_small, df_val_small.label.values, max_seq_len=200)
 trn_samp = SortishSampler(tokens_train_small, key=lambda x: len(tokens_train_small[x]), bs=bs//2)
 val_samp = SortSampler(tokens_val_small, key=lambda x: len(tokens_val_small[x]))
-trn_dl = DataLoader(trn_ds, bs//2, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
-val_dl = DataLoader(val_ds, bs, transpose=False, num_workers=1, pad_idx=2, sampler=val_samp)
+trn_dl = FixedLengthDataLoader(trn_ds, batch_size=bs//2, seq_length=200, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
+val_dl = FixedLengthDataLoader(val_ds, batch_size=bs, seq_length=200, transpose=False, num_workers=1, pad_idx=2, sampler=val_samp)
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[22]:
+# In[20]:
 
 
 model= get_transformer_classifier(
@@ -837,7 +837,7 @@ model= get_transformer_classifier(
 )
 
 
-# In[23]:
+# In[21]:
 
 
 learn = TransformerLearner(
@@ -858,7 +858,7 @@ learn.lr_find(lrs/100)
 learn.sched.plot()
 
 
-# In[24]:
+# In[22]:
 
 
 learn.freeze_to(-1)
@@ -887,21 +887,21 @@ print(preds.shape, ys.shape)
  np.average(logloss, 0, weights=batch_cnts), np.mean(preds==ys)
 
 
-# In[26]:
+# In[23]:
 
 
 learn.freeze_to(-2)
 learn.fit(lrs, 1, wds=1e-6, cycle_len=1, use_clr=(8,3), use_wd_sched=True)
 
 
-# In[27]:
+# In[24]:
 
 
 learn.unfreeze()
 learn.fit(lrs, 1, wds=1e-6, cycle_len=10, use_clr=(32,10), use_wd_sched=True)
 
 
-# In[28]:
+# In[25]:
 
 
 learn.save("clas_small_full")
@@ -988,13 +988,13 @@ for i in range(3):
 
 # ## Regressor
 
-# In[38]:
+# In[9]:
 
 
 n_toks, tokens_train, tokens_val, tokens_test = joblib.load("../data/cache/rating_unigram_tokens.pkl")
 
 
-# In[39]:
+# In[10]:
 
 
 bs = 128
@@ -1002,25 +1002,34 @@ trn_ds = TextDataset(tokens_train, df_train.rating.values.astype("float32"), max
 val_ds = TextDataset(tokens_val, df_val.rating.values.astype("float32"), max_seq_len=200)
 trn_samp = SortishSampler(tokens_train, key=lambda x: len(tokens_train[x]), bs=bs//2)
 val_samp = SortSampler(tokens_val, key=lambda x: len(tokens_val[x]))
-trn_dl = DataLoader(trn_ds, bs//2, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
-val_dl = DataLoader(val_ds, bs, transpose=False, num_workers=1, pad_idx=2, sampler=val_samp)
+trn_dl = FixedLengthDataLoader(trn_ds, seq_length=200, batch_size=bs//2, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
+val_dl = FixedLengthDataLoader(val_ds, seq_length=200, batch_size=bs, transpose=False, num_workers=1, pad_idx=2, sampler=val_samp)
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[69]:
+# In[11]:
 
 
 tmp = next(iter(trn_dl))
 tmp[0].size()
 
 
-# In[70]:
+# In[12]:
+
+
+for x, _ in trn_dl:
+    if x.size(1) != 200:
+        print(x.size())
+    assert x.size(1) == 200
+
+
+# In[13]:
 
 
 tmp[0][2, :]
 
 
-# In[71]:
+# In[14]:
 
 
 model= get_transformer_classifier(
@@ -1039,7 +1048,7 @@ model= get_transformer_classifier(
 )    
 
 
-# In[72]:
+# In[15]:
 
 
 class TruncatedTransformerRegLearner(TransformerLearner):
@@ -1049,7 +1058,7 @@ class TruncatedTransformerRegLearner(TransformerLearner):
     def _get_crit(self, data): return lambda x, y: F.mse_loss(x[:, 0], y)
 
 
-# In[73]:
+# In[16]:
 
 
 learn = TruncatedTransformerRegLearner(
@@ -1060,7 +1069,7 @@ learn.clip=25
 learn.load_encoder('lm1_enc')
 
 
-# In[74]:
+# In[33]:
 
 
 learn.model[1]
@@ -1075,22 +1084,23 @@ learn.lr_find(lrs/1000)
 learn.sched.plot()
 
 
-# In[76]:
+# In[34]:
 
 
 lrs = np.array([5e-5, 1e-4, 2e-4, 5e-4, 1e-3])
+learn.freeze_to(-1)
 get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))')
 learn.save('reg_0')
 
 
-# In[77]:
+# In[35]:
 
 
 learn.freeze_to(-3)
-get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=0, cycle_len=1, use_clr=(8,3))')
+get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=1e-6, cycle_len=1, use_clr=(8,3), use_wd_sched=True)')
 
 
-# In[80]:
+# In[36]:
 
 
 learn.unfreeze()
@@ -1105,7 +1115,7 @@ learn.save('reg_full')
 torch.save(learn.model, path / "sentiment_model.pth")
 
 
-# In[53]:
+# In[17]:
 
 
 learn.load('reg_full')
@@ -1113,11 +1123,11 @@ learn.load('reg_full')
 
 # ### Evaluation
 
-# In[54]:
+# In[18]:
 
 
 def get_preds(data_loader):
-    learn.model.train()       
+    learn.model.eval()       
     preds, ys = [], []
     for x, y in tqdm_notebook(data_loader):   
         with torch.set_grad_enabled(False):
@@ -1128,7 +1138,7 @@ def get_preds(data_loader):
     return ys, preds
 
 
-# In[56]:
+# In[19]:
 
 
 ys, preds = get_preds(val_dl)
@@ -1136,13 +1146,13 @@ print("(Validation set):", preds.shape, ys.shape)
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[57]:
+# In[20]:
 
 
 pd.Series(preds).describe()
 
 
-# In[62]:
+# In[21]:
 
 
 test_ds = TextDataset(tokens_test, df_test.rating.values, max_seq_len=200)
@@ -1150,7 +1160,7 @@ test_samp = SortSampler(tokens_test, key=lambda x: len(tokens_test[x]))
 test_dl = DataLoader(test_ds, bs, transpose=False, num_workers=1, pad_idx=2, sampler=test_samp)
 
 
-# In[63]:
+# In[22]:
 
 
 ys, preds = get_preds(test_dl)
@@ -1158,67 +1168,53 @@ print("(Test set):", preds.shape, ys.shape)
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[64]:
+# In[23]:
 
 
 pd.Series(ys).describe()
 
 
-# In[65]:
+# In[24]:
 
 
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[66]:
+# In[25]:
 
 
 preds = np.clip(preds, 1, 5)
 np.sum(np.square(preds - ys)) / preds.shape[0]
 
 
-# In[129]:
-
-
-ys, preds = get_preds(test_dl)
-preds.shape, ys.shape
-
-
-# In[130]:
-
-
-preds = np.clip(preds, 1, 5)
-np.sum(np.square(preds - ys)) / preds.shape[0]
-
-
-# In[131]:
+# In[28]:
 
 
 # Save predictions
 df_test.loc[df_test.iloc[list(iter(test_samp))].index, "preds"] = preds
-df_test.to_csv(path / "df_test.csv.gz", index=False, compression="gzip")
+# df_test.to_csv(path / "df_test.csv.gz", index=False, compression="gzip")
 df_test.head()
 
 
-# In[132]:
+# In[29]:
 
 
 df_test.sample(20)
 
 
-# In[133]:
+# In[30]:
 
 
 np.sum(np.square(df_test.rating.values - df_test.preds.values)) / preds.shape[0]
 
 
-# In[134]:
+# In[31]:
 
 
 preds_class = np.round(preds)
 
 
-# In[135]:
+# In[32]:
 
 
 cnf_matrix = confusion_matrix(ys, preds_class)
@@ -1231,7 +1227,7 @@ plot_confusion_matrix(
     title='Confusion matrix, without normalization')
 
 
-# In[136]:
+# In[33]:
 
 
 from sklearn.metrics import precision_recall_fscore_support
@@ -1240,7 +1236,7 @@ for i in range(5):
     print(f"Class {i}: P {precision[i]*100:.0f}%, R {recall[i]*100:.0f}%, FS {fscore[i]:.2f}, Support: {support[i]}")
 
 
-# In[137]:
+# In[34]:
 
 
 def get_prediction(texts):
@@ -1248,50 +1244,50 @@ def get_prediction(texts):
     return learn.model(input_tensor)[0].data.cpu().numpy()[0, 0]
 
 
-# In[138]:
+# In[38]:
 
 
 get_prediction("看 了 快 一半 了 才 发现 是 mini 的 广告")
 
 
-# In[139]:
+# In[ ]:
 
 
 get_prediction("妈蛋 ， 简直 太 好看 了 。 最后 的 DJ battle 部分 ， 兴奋 的 我 ， 简直 想 从 座位 上 站 起来 一起 扭")
 
 
-# In[140]:
+# In[ ]:
 
 
 get_prediction("关键点 都 好傻 ， 我 知道 你 要拍 续集 ， "
                "我 知道 未来 可以 被 重写 ， 但 那 一拳 真的 有点 傻 。")
 
 
-# In[141]:
+# In[ ]:
 
 
 get_prediction("李冰冰 的 脸 真的 很 紧绷 ， 比 鲨鱼 的 脸 还 绷 。")
 
 
-# In[142]:
+# In[ ]:
 
 
 get_prediction("太 烂 了 ， 难看 至极 。")
 
 
-# In[143]:
+# In[ ]:
 
 
 get_prediction("看完 之后 很 生气 ！ 剧情 太差 了")
 
 
-# In[144]:
+# In[ ]:
 
 
 get_prediction("好了 可以 了 。 再也 不看 Marvel 了 。 我 努力 过 了 。 实在 是 。 。 啥呀 这是 。 🙄️")
 
 
-# In[145]:
+# In[ ]:
 
 
 get_prediction("还 我 电影票 14 元")

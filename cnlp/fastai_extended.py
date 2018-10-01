@@ -11,7 +11,7 @@ from fastai.core import BasicModel, to_gpu
 from fastai.nlp import RNN_Learner
 from fastai.lm_rnn import SequentialRNN
 from fastai.torch_imports import save_model, load_model
-# from fastai.dataloader import DataLoader
+from fastai.dataloader import DataLoader
 
 from .transformer_decoder import TransformerEncoder, LayerNorm
 
@@ -161,6 +161,49 @@ class TextDataset(Dataset):
 
     def __len__(self):
         return len(self.x)
+
+
+class FixedLengthDataLoader(DataLoader):
+    def __init__(self,
+                 dataset,
+                 seq_length,
+                 batch_size=1,
+                 shuffle=False,
+                 sampler=None,
+                 batch_sampler=None,
+                 pad_idx=0,
+                 num_workers=None,
+                 pin_memory=False,
+                 drop_last=False,
+                 pre_pad=True,
+                 half=False,
+                 transpose=False,
+                 transpose_y=False):
+        super().__init__(
+            dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            sampler=sampler,
+            batch_sampler=batch_sampler,
+            pad_idx=pad_idx,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=drop_last,
+            pre_pad=pre_pad,
+            half=half,
+            transpose=transpose,
+            transpose_y=transpose_y)
+        self.seq_length = seq_length
+
+    def jag_stack(self, b):
+        if len(b[0].shape) not in (1, 2): return np.stack(b)
+        ml = self.seq_length
+        if min(len(o) for o in b) == ml: return np.stack(b)
+        res = np.zeros((len(b), ml), dtype=b[0].dtype) + self.pad_idx
+        for i, o in enumerate(b):
+            if self.pre_pad: res[i, -len(o):] = o
+            else: res[i, :len(o)] = o
+        return res
 
 
 class TransformerLanguageModel(BasicModel):
