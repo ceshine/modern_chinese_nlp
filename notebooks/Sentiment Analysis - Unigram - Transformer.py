@@ -131,7 +131,7 @@ BEG = 1
 EMB_DIM = 300
 
 
-# In[37]:
+# In[9]:
 
 
 sp = spm.SentencePieceProcessor()
@@ -248,7 +248,13 @@ weights['0.embed.weight'].shape
 
 # ## Languange Model
 
-# In[21]:
+# In[11]:
+
+
+n_toks, tokens_train, tokens_val, tokens_test = joblib.load("../data/cache/rating_unigram_tokens.pkl")
+
+
+# In[12]:
 
 
 bs = 32
@@ -258,7 +264,7 @@ trn_dl = LanguageModelLoader(np.concatenate(tokens_train), bs, bptt, target_leng
 val_dl = LanguageModelLoader(np.concatenate(tokens_val), bs, bptt, target_length=target_length, batch_first=True)
 
 
-# In[22]:
+# In[13]:
 
 
 model_data = LanguageModelData(
@@ -266,7 +272,7 @@ model_data = LanguageModelData(
 )
 
 
-# In[23]:
+# In[14]:
 
 
 learner = model_data.get_transformer_model(
@@ -279,28 +285,22 @@ learner = model_data.get_transformer_model(
     attn_pdrop=0.1,
     resid_pdrop=0.1
 )
+learner.metrics = [accuracy]
 
 
-# In[24]:
-
-
-learner.model.load_state_dict(weights)
-assert torch.equal(learner.model[0].embed.weight[:-200, :], learner.model[1].weight)
-
-
-# In[25]:
+# In[16]:
 
 
 next(iter(trn_dl))[0].size()
 
 
-# In[26]:
+# In[17]:
 
 
 learner.get_layer_groups()
 
 
-# In[39]:
+# In[18]:
 
 
 from fastai.core import set_trainable
@@ -315,21 +315,22 @@ assert learner.model[0].embed.trainable == True
 assert learner.model[0].embed.weight.requires_grad == True
 
 
-# In[41]:
+# In[19]:
 
 
 lr=1e-3
 lrs = lr
+learner.freeze_to(-1)
 learner.fit(lrs/2, 1, wds=0, use_clr=(32,2), cycle_len=1)
 
 
-# In[42]:
+# In[20]:
 
 
 learner.save('lm_last_ft')
 
 
-# In[43]:
+# In[ ]:
 
 
 learner.unfreeze()
@@ -343,18 +344,14 @@ learner.lr_find(start_lr=lrs/10, end_lr=lrs*10, linear=True)
 learner.sched.plot()
 
 
-# In[46]:
-
-
-get_ipython().run_line_magic('pinfo', 'learner.fit')
-
-
-# In[47]:
+# In[22]:
 
 
 lr = 1e-4
 lrs = lr
-learner.fit(lrs, n_cycle=1, wds=0, use_clr=(20,4), cycle_len=10)
+learner.unfreeze()
+learner.clip = 25
+learner.fit(lrs, n_cycle=1, wds=0, use_clr=(32,4), cycle_len=10)
 
 
 # In[48]:
@@ -760,13 +757,13 @@ for i in range(3):
 
 # ### Smaller Dataset 
 
-# In[9]:
+# In[10]:
 
 
 n_toks, tokens_train, tokens_val, tokens_test = joblib.load("../data/cache/rating_unigram_tokens.pkl")
 
 
-# In[10]:
+# In[11]:
 
 
 for df in (df_train, df_val, df_test):
@@ -775,14 +772,14 @@ for df in (df_train, df_val, df_test):
     df.loc[df.rating > 3, "label"] = 2
 
 
-# In[11]:
+# In[12]:
 
 
 df_train.reset_index(drop=True, inplace=True)
 df_val.reset_index(drop=True, inplace=True)
 
 
-# In[12]:
+# In[13]:
 
 
 df_train_small = pd.concat([
@@ -797,28 +794,30 @@ df_val_small = pd.concat([
 ], axis=0)
 
 
-# In[13]:
+# In[14]:
 
 
 np.array(df_train_small.index)
 
 
-# In[19]:
+# In[15]:
 
 
-bs = 64
+bs = 128
 tokens_train_small = np.array(tokens_train)[np.array(df_train_small.index)]
 tokens_val_small = np.array(tokens_val)[np.array(df_val_small.index)]
-trn_ds = TextDataset(tokens_train_small, df_train_small.label.values, max_seq_len=200)
-val_ds = TextDataset(tokens_val_small, df_val_small.label.values, max_seq_len=200)
+trn_ds = TextDataset(tokens_train_small, df_train_small.label.values, max_seq_len=100)
+val_ds = TextDataset(tokens_val_small, df_val_small.label.values, max_seq_len=100)
 trn_samp = SortishSampler(tokens_train_small, key=lambda x: len(tokens_train_small[x]), bs=bs//2)
 val_samp = SortSampler(tokens_val_small, key=lambda x: len(tokens_val_small[x]))
-trn_dl = FixedLengthDataLoader(trn_ds, batch_size=bs//2, seq_length=200, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
-val_dl = FixedLengthDataLoader(val_ds, batch_size=bs, seq_length=200, transpose=False, num_workers=1, pad_idx=2, sampler=val_samp)
+trn_dl = FixedLengthDataLoader(
+    trn_ds, batch_size=bs//2, seq_length=100, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
+val_dl = FixedLengthDataLoader(
+    val_ds, batch_size=bs, seq_length=100, transpose=False, num_workers=1, pad_idx=2, sampler=val_samp)
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[20]:
+# In[16]:
 
 
 model= get_transformer_classifier(
@@ -827,78 +826,57 @@ model= get_transformer_classifier(
     n_head=12, 
     n_layer=3, 
     n_ctx=200,
-    clf_layers=[EMB_DIM, 50, 3],
+    clf_layers=[EMB_DIM, 3],
     pad_token=2,
-    embd_pdrop=0.05,
-    attn_pdrop=0.1,
-    resid_pdrop=0.1,
-    clf_pdrop=[0.5, 0.2],
+    embd_pdrop=0.1,
+    attn_pdrop=0.2,
+    resid_pdrop=0.2,
+    clf_pdrop=[0.5],
     afn="gelu"
 )
 
 
-# In[21]:
+# In[17]:
 
 
 learn = TransformerLearner(
     model_data, 
     TransformerTextModel(to_gpu(model)), 
-    opt_fn=partial(torch.optim.Adam, betas=(0.9, 0.999)))
+    opt_fn=partial(torch.optim.Adam, betas=(0.8, 0.99)))
 learn.clip=25
 learn.metrics = [accuracy]
 learn.load_encoder('lm1_enc')
 
 
-# In[50]:
+# In[25]:
 
 
-lrs = np.array([1e-5, 1e-4, 1e-4, 1e-4, 2e-4])
+lrs = np.array([1e-4, 1e-4, 1e-4, 1e-4, 2e-4])
 learn.freeze_to(-1)
 learn.lr_find(lrs/100)
 learn.sched.plot()
 
 
-# In[22]:
-
-
-learn.freeze_to(-1)
-lrs = np.array([1e-5, 1e-4, 2e-4, 5e-4, 1e-3])
-learn.fit(lrs, 1, wds=1e-6, cycle_len=1, use_clr=(8,3), use_wd_sched=True)
-
-
 # In[18]:
 
 
-# Debug Purpose Only
-learn.model.eval()
-preds, ys, logloss, batch_cnts = [], [], [], []
-with torch.set_grad_enabled(False):
-    for x, y in tqdm_notebook(model_data.val_dl):
-        tmp = learn.model(x).cpu()
-        batch_cnts.append(x.shape[0])
-        logloss.append(F.cross_entropy(tmp, y.cpu()).data.numpy())
-        preds.append(np.argmax(tmp.cpu().data.numpy(), axis=1))
-        ys.append(y.cpu().numpy())
-logloss = np.array(logloss)
-preds = np.concatenate(preds)
-ys = np.concatenate(ys)
-batch_cnts = np.array(batch_cnts)
-print(preds.shape, ys.shape)
- np.average(logloss, 0, weights=batch_cnts), np.mean(preds==ys)
-
-
-# In[23]:
-
-
-learn.freeze_to(-2)
+learn.freeze_to(-1)
+lrs = np.array([1e-4, 2e-4, 2e-4, 2e-4, 5e-4])
 learn.fit(lrs, 1, wds=1e-6, cycle_len=1, use_clr=(8,3), use_wd_sched=True)
 
 
-# In[24]:
+# In[19]:
+
+
+learn.freeze_to(-3)
+learn.fit(lrs, 1, wds=1e-6, cycle_len=1, use_clr=(8,3), use_wd_sched=True)
+
+
+# In[20]:
 
 
 learn.unfreeze()
-learn.fit(lrs, 1, wds=1e-6, cycle_len=10, use_clr=(32,10), use_wd_sched=True)
+learn.fit(lrs, 1, wds=1e-6, cycle_len=4, use_clr=(16,4), use_wd_sched=True)
 
 
 # In[25]:
@@ -988,48 +966,48 @@ for i in range(3):
 
 # ## Regressor
 
-# In[9]:
+# In[10]:
 
 
 n_toks, tokens_train, tokens_val, tokens_test = joblib.load("../data/cache/rating_unigram_tokens.pkl")
 
 
-# In[10]:
+# In[11]:
 
 
 bs = 128
-trn_ds = TextDataset(tokens_train, df_train.rating.values.astype("float32"), max_seq_len=200)
-val_ds = TextDataset(tokens_val, df_val.rating.values.astype("float32"), max_seq_len=200)
+trn_ds = TextDataset(tokens_train, df_train.rating.values.astype("float32"), max_seq_len=100)
+val_ds = TextDataset(tokens_val, df_val.rating.values.astype("float32"), max_seq_len=100)
 trn_samp = SortishSampler(tokens_train, key=lambda x: len(tokens_train[x]), bs=bs//2)
 val_samp = SortSampler(tokens_val, key=lambda x: len(tokens_val[x]))
-trn_dl = FixedLengthDataLoader(trn_ds, seq_length=200, batch_size=bs//2, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
-val_dl = FixedLengthDataLoader(val_ds, seq_length=200, batch_size=bs, transpose=False, num_workers=1, pad_idx=2, sampler=val_samp)
+trn_dl = FixedLengthDataLoader(trn_ds, seq_length=100, batch_size=bs//2, transpose=False, num_workers=1, pad_idx=2, sampler=trn_samp)
+val_dl = FixedLengthDataLoader(val_ds, seq_length=100, batch_size=bs, transpose=False, num_workers=1, pad_idx=2, sampler=val_samp)
 model_data = ModelData(path, trn_dl, val_dl)
 
 
-# In[11]:
+# In[12]:
 
 
 tmp = next(iter(trn_dl))
 tmp[0].size()
 
 
-# In[12]:
+# In[13]:
 
 
 for x, _ in trn_dl:
-    if x.size(1) != 200:
+    if x.size(1) != 100:
         print(x.size())
-    assert x.size(1) == 200
+    assert x.size(1) == 100
 
 
-# In[13]:
+# In[14]:
 
 
 tmp[0][2, :]
 
 
-# In[14]:
+# In[15]:
 
 
 model= get_transformer_classifier(
@@ -1040,7 +1018,7 @@ model= get_transformer_classifier(
     n_ctx=200,
     clf_layers=[EMB_DIM, 100, 1],
     pad_token=2,
-    embd_pdrop=0.05,
+    embd_pdrop=0.1,
     attn_pdrop=0.1,
     resid_pdrop=0.1,
     clf_pdrop=[0.5, 0.2],
@@ -1048,7 +1026,7 @@ model= get_transformer_classifier(
 )    
 
 
-# In[15]:
+# In[16]:
 
 
 class TruncatedTransformerRegLearner(TransformerLearner):
@@ -1058,7 +1036,7 @@ class TruncatedTransformerRegLearner(TransformerLearner):
     def _get_crit(self, data): return lambda x, y: F.mse_loss(x[:, 0], y)
 
 
-# In[16]:
+# In[17]:
 
 
 learn = TruncatedTransformerRegLearner(
@@ -1069,13 +1047,13 @@ learn.clip=25
 learn.load_encoder('lm1_enc')
 
 
-# In[33]:
+# In[18]:
 
 
 learn.model[1]
 
 
-# In[75]:
+# In[ ]:
 
 
 lrs = np.array([5e-5, 1e-4, 2e-4, 5e-4, 1e-3])
@@ -1084,7 +1062,7 @@ learn.lr_find(lrs/1000)
 learn.sched.plot()
 
 
-# In[34]:
+# In[19]:
 
 
 lrs = np.array([5e-5, 1e-4, 2e-4, 5e-4, 1e-3])
@@ -1093,32 +1071,85 @@ get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=0, cycle_len=1, use_
 learn.save('reg_0')
 
 
-# In[35]:
+# In[20]:
 
 
 learn.freeze_to(-3)
 get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=1e-6, cycle_len=1, use_clr=(8,3), use_wd_sched=True)')
 
 
-# In[36]:
+# In[24]:
 
 
 learn.unfreeze()
-get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=1e-6, cycle_len=12, use_clr=(32,5), use_wd_sched=True)')
+get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=1e-6, cycle_len=5, use_clr=(32,4), use_wd_sched=True)')
 learn.save('reg_full')
 
 
-# In[21]:
+# In[22]:
 
 
 # Export Model
 torch.save(learn.model, path / "sentiment_model.pth")
 
 
-# In[17]:
+# In[23]:
 
 
 learn.load('reg_full')
+
+
+# In[42]:
+
+
+model= get_transformer_classifier(
+    n_tok=n_toks, 
+    emb_sz=EMB_DIM, 
+    n_head=12, 
+    n_layer=3, 
+    n_ctx=200,
+    clf_layers=[EMB_DIM, 100, 1],
+    pad_token=2,
+    embd_pdrop=0.1,
+    attn_pdrop=0.1,
+    resid_pdrop=0.1,
+    clf_pdrop=[0.5, 0.2],
+    afn="gelu"
+)    
+learn = TruncatedTransformerRegLearner(
+    model_data, 
+    TransformerTextModel(to_gpu(model)), 
+    opt_fn=partial(torch.optim.Adam, betas=(0.9, 0.999)))
+learn.clip=25
+learn.load_encoder('lm1_enc')
+
+
+# In[43]:
+
+
+lrs = np.array([1e-5, 1e-5, 2e-5, 5e-5, 5e-4])
+learn.load('reg_0')
+
+
+# In[41]:
+
+
+learn.unfreeze()
+get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=1e-6, cycle_len=3, use_clr=(8,3), use_wd_sched=True)')
+learn.save('reg_1')
+
+
+# In[37]:
+
+
+learn.save('reg_1')
+
+
+# In[38]:
+
+
+learn.freeze_to(-2)
+get_ipython().run_line_magic('time', 'learn.fit(lrs, 1, wds=1e-6, cycle_len=3, use_clr=(8,3), use_wd_sched=True)')
 
 
 # ### Evaluation
@@ -1236,58 +1267,58 @@ for i in range(5):
     print(f"Class {i}: P {precision[i]*100:.0f}%, R {recall[i]*100:.0f}%, FS {fscore[i]:.2f}, Support: {support[i]}")
 
 
-# In[34]:
+# In[48]:
 
 
 def get_prediction(texts):
-    input_tensor = T(np.array([1] + sp.EncodeAsIds(texts))).unsqueeze(1)
-    return learn.model(input_tensor)[0].data.cpu().numpy()[0, 0]
+    input_tensor = T(np.array([1] + sp.EncodeAsIds(texts))).unsqueeze(0)
+    return learn.model(input_tensor).data.cpu().numpy()[0, 0]
 
 
-# In[38]:
+# In[49]:
 
 
 get_prediction("看 了 快 一半 了 才 发现 是 mini 的 广告")
 
 
-# In[ ]:
+# In[50]:
 
 
 get_prediction("妈蛋 ， 简直 太 好看 了 。 最后 的 DJ battle 部分 ， 兴奋 的 我 ， 简直 想 从 座位 上 站 起来 一起 扭")
 
 
-# In[ ]:
+# In[51]:
 
 
 get_prediction("关键点 都 好傻 ， 我 知道 你 要拍 续集 ， "
                "我 知道 未来 可以 被 重写 ， 但 那 一拳 真的 有点 傻 。")
 
 
-# In[ ]:
+# In[52]:
 
 
 get_prediction("李冰冰 的 脸 真的 很 紧绷 ， 比 鲨鱼 的 脸 还 绷 。")
 
 
-# In[ ]:
+# In[53]:
 
 
 get_prediction("太 烂 了 ， 难看 至极 。")
 
 
-# In[ ]:
+# In[54]:
 
 
 get_prediction("看完 之后 很 生气 ！ 剧情 太差 了")
 
 
-# In[ ]:
+# In[55]:
 
 
 get_prediction("好了 可以 了 。 再也 不看 Marvel 了 。 我 努力 过 了 。 实在 是 。 。 啥呀 这是 。 🙄️")
 
 
-# In[ ]:
+# In[56]:
 
 
 get_prediction("还 我 电影票 14 元")

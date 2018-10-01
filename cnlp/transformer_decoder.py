@@ -275,6 +275,8 @@ class TransformerEncoder(nn.Module):
             e = self.embed(x)
             # Add the position information to the input embeddings
             h = self.drop(e.sum(dim=2))
+            # # L2 norm
+            # h = F.normalize(h, p=2, dim=-1)
             for block in self.blocks:
                 h = block(h)
         return h

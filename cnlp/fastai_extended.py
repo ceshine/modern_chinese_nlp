@@ -10,7 +10,6 @@ import fastai.text
 from fastai.core import BasicModel, to_gpu
 from fastai.nlp import RNN_Learner
 from fastai.lm_rnn import SequentialRNN
-from fastai.torch_imports import save_model, load_model
 from fastai.dataloader import DataLoader
 
 from .transformer_decoder import TransformerEncoder, LayerNorm
@@ -270,13 +269,15 @@ class LinearBlock(nn.Module):
         self.drop = nn.Dropout(drop)
         self.norm = norm
         if norm:
-            self.ln = LayerNorm(nf)
+            self.ln = nn.LayerNorm(ni)
+            # self.ln = nn.BatchNorm1d(ni)
         nn.init.kaiming_normal_(self.lin.weight)
         nn.init.constant_(self.lin.bias, 0)
 
     def forward(self, x):
         if self.norm:
-            return self.ln(self.lin(self.drop(x)))
+            # return self.ln(self.lin(self.drop(x)))
+            return self.lin(self.drop(self.ln(x)))
         else:
             return self.lin(self.drop(x))
 
@@ -321,11 +322,9 @@ class MLP(nn.Module):
         super().__init__()
         self.batch_first = batch_first
         self.layers = nn.ModuleList([
-            LinearBlock(
-                layers[i],
-                layers[i + 1],
-                drops[i],
-                norm=(i != len(layers) - 2)) for i in range(len(layers) - 1)
+            LinearBlock(layers[i], layers[i + 1], drops[i], norm=True)
+            # norm=(i != len(layers) - 2))
+            for i in range(len(layers) - 1)
         ])
 
     def forward(self, output):
