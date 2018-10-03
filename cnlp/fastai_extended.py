@@ -15,6 +15,11 @@ from fastai.dataloader import DataLoader
 from .transformer_decoder import TransformerEncoder, LayerNorm
 
 
+class TransformerLearner(RNN_Learner):
+    def fit(self, *args, **kwargs):
+        return super().fit(*args, **kwargs, seq_first=False)
+
+
 class LanguageModelLoader:
     """ Returns a language model iterator that iterates through batches that are of length N(bptt,5)
     The first batch returned is always bptt+25; the max possible width.  This is done because of they way that pytorch
@@ -110,7 +115,7 @@ class ShuffledLanguageModelLoader(LanguageModelLoader):
                  randomize_bptt: bool = False):
         # We intentional don't invoke super class's initializer
         # as we only want to reuse batchify and get_batch method
-        super().__init__(bs, bptt, target_length, False, batch_first,
+        super().__init__(nums, bs, bptt, target_length, False, batch_first,
                          randomize_bptt)
 
     def __iter__(self):
@@ -222,7 +227,7 @@ class LanguageModelData(fastai.text.LanguageModelData):
             pad_token=self.pad_idx,
             **kwargs)
         model = TransformerLanguageModel(to_gpu(m))
-        return RNN_Learner(self, model, opt_fn=opt_fn)
+        return TransformerLearner(self, model, opt_fn=opt_fn)
 
 
 class FlattenPredictions(nn.Module):
@@ -353,11 +358,6 @@ class MLP(nn.Module):
 
 #     def load_encoder(self, name):
 #         load_model(self.model[0], self.get_model_path(name))
-
-
-class TransformerLearner(RNN_Learner):
-    def fit(self, *args, **kwargs):
-        return super().fit(*args, **kwargs, seq_first=False)
 
 
 def get_transformer_classifier(n_tok: int,

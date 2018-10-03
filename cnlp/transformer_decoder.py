@@ -247,6 +247,7 @@ class TransformerEncoder(nn.Module):
         self.vocab = vocab
         self.embed = nn.Embedding(vocab + n_ctx, n_embd, padding_idx=pad_token)
         self.drop = LockedDropout(embd_pdrop, dim=1)
+        self.n_ctx = n_ctx
         cfg = dotdict({
             "n_head": n_head,
             "n_embd": n_embd,
@@ -261,11 +262,12 @@ class TransformerEncoder(nn.Module):
 
     def _prepare_input_tensor(self, x):
         n_batch = x.size(0)
-        n_ctx = x.size(1)
-        x_w_context = torch.zeros((n_batch, n_ctx, 2)).long().to(x.device)
+        seq_len = x.size(1)
+        x_w_context = torch.zeros((n_batch, seq_len, 2)).long().to(x.device)
         x_w_context[:, :, 0] = x
-        x_w_context[:, :, 1] = torch.arange(
-            self.vocab, self.vocab + n_ctx).long().to(x.device)
+        x_w_context[:, :, 1] = torch.arange(self.vocab + self.n_ctx - seq_len,
+                                            self.vocab + self.n_ctx).long().to(
+                                                x.device)
         return x_w_context
 
     def forward(self, x):
