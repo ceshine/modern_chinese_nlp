@@ -26,7 +26,7 @@ import torch
 import torch.nn.functional as F
 import sentencepiece as spm
 
-from cnlp.fastai_extended import LanguageModelLoader, LanguageModelData
+from cnlp.fastai_extended import LanguageModelLoader, LanguageModelData, ShuffledLanguageModelLoader
 
 
 # In[3]:
@@ -60,21 +60,21 @@ def get_voc_stats(tokens):
 get_voc_stats(tokens)
 
 
-# In[20]:
+# In[7]:
 
 
-bptt = 200
-batch_size = 128
+bptt = 100
+batch_size = 64
 n_tok = int(np.max([np.max(x) for x in tokens]) + 1)
-trn_loader = LanguageModelLoader(
-    np.concatenate(trn_tokens), batch_size, bptt, target_length=160, batch_first=True)
-val_loader = LanguageModelLoader(
-    np.concatenate(val_tokens), batch_size, bptt, target_length=160, batch_first=True)
-tst_loader = LanguageModelLoader(
-    np.concatenate(tst_tokens), batch_size, bptt, target_length=160, batch_first=True)
+trn_loader = ShuffledLanguageModelLoader(
+    np.concatenate(trn_tokens), batch_size, bptt, target_length=90, batch_first=True)
+val_loader = ShuffledLanguageModelLoader(
+    np.concatenate(val_tokens), batch_size,   bptt, target_length=90, batch_first=True)
+tst_loader = ShuffledLanguageModelLoader(
+    np.concatenate(tst_tokens), batch_size, bptt, target_length=90, batch_first=True)
 
 
-# In[9]:
+# In[8]:
 
 
 sp = spm.SentencePieceProcessor()
@@ -132,22 +132,22 @@ pytorch_trainable_params = sum(p.numel() for p in learner.model.parameters() if 
 pytorch_total_params, pytorch_trainable_params
 
 
-# In[36]:
+# In[14]:
 
 
 learner = model_data.get_transformer_model(
-    partial(Adam, betas=(0.9, 0.999)),
+    partial(Adam, betas=(0.8, 0.99)),
     max_seq_len=trn_loader.max_possible_seq_len,
-    emb_sz=300,
+    emb_sz=480,
     n_head=12,
-    n_layer=3,
-    embd_pdrop=0.05,
+    n_layer=6,
+    embd_pdrop=0.1,
     attn_pdrop=0.1,
     resid_pdrop=0.1
 )
 
 
-# In[37]:
+# In[15]:
 
 
 pytorch_total_params = sum(p.numel() for p in learner.model.parameters())
@@ -155,7 +155,7 @@ pytorch_trainable_params = sum(p.numel() for p in learner.model.parameters() if 
 pytorch_total_params, pytorch_trainable_params
 
 
-# In[38]:
+# In[17]:
 
 
 learner.clip = 10.
@@ -163,40 +163,40 @@ learner.lr_find(start_lr=1e-4, end_lr=1e-2, linear=False)
 get_ipython().run_line_magic('time', 'learner.sched.plot()')
 
 
-# In[39]:
+# In[16]:
 
 
-lrs = 2e-3
+lrs = 1e-3
 learner.clip = 20.
-get_ipython().run_line_magic('time', 'learner.fit(lrs, 1, wds=0, use_clr=(50, 4), cycle_len=10, use_wd_sched=False)')
+get_ipython().run_line_magic('time', 'learner.fit(lrs, 1, wds=0, use_clr=(50, 4), cycle_len=5, use_wd_sched=False)')
 
 
-# In[40]:
+# In[17]:
 
 
 learner.sched.plot_lr()
 
 
-# In[41]:
+# In[18]:
 
 
 learner.save("lm_transformer")
 learner.save_encoder("lm_transformer_enc")
 
 
-# In[42]:
+# In[19]:
 
 
 tmp_iter = iter(trn_loader)
 
 
-# In[43]:
+# In[20]:
 
 
 next(tmp_iter)[0].shape
 
 
-# In[45]:
+# In[21]:
 
 
 learner.load("lm_transformer")
@@ -204,7 +204,7 @@ learner.load("lm_transformer")
 
 # ## Test the model
 
-# In[46]:
+# In[22]:
 
 
 learner.model.eval()
@@ -212,34 +212,34 @@ learner.model.eval()
 
 # ### Next Character Inference
 
-# In[47]:
+# In[23]:
 
 
 tokens = sp.EncodeAsIds("德国 是 世界 大国 之 一 ， 其 国内 生产 总 值 以 国际 汇率 计")
 tokens
 
 
-# In[48]:
+# In[24]:
 
 
 iterator = iter(tst_loader)
 x, y = next(iterator)
 
 
-# In[49]:
+# In[25]:
 
 
 x.shape, y.shape
 
 
-# In[50]:
+# In[26]:
 
 
 logits = learner.model(x.to("cuda"))
 logits.shape
 
 
-# In[51]:
+# In[31]:
 
 
 def eval_tensors(x, y):
@@ -248,64 +248,65 @@ def eval_tensors(x, y):
     preds = []
     for i in range(1, 4):
           preds.append([sp.IdToPiece(x) for x in sorted_idx[:, -i].tolist()])
+    print(x.shape, len(preds[0]))
     return pd.DataFrame({
-        "orig": [sp.IdToPiece(int(i)) for i in x[0, 40:].numpy()] + [""], 
+        "orig": [sp.IdToPiece(int(i)) for i in x[0, 10:].numpy()] + [""], 
         "pred_1": [""] + preds[0], "pred_2": [""] + preds[1], "pred_3": [""] + preds[2],
         "actual": [""] + [sp.IdToPiece(int(i)) for i in y.numpy()]
     })
-tmp = eval_tensors(x[:1, :], y[:160])
+tmp = eval_tensors(x[:1, :], y[:90])
 tmp[:20]
 
 
-# In[52]:
+# In[32]:
 
 
 tmp.iloc[-20:]
 
 
-# In[53]:
+# In[34]:
 
 
-tmp = eval_tensors(x[1:2, :], y[160:320])
+tmp = eval_tensors(x[1:2, :], y[90:180])
 tmp[-20:]
 
 
-# In[54]:
+# In[68]:
 
 
 def eval_text(texts):
-    tokens =sp.EncodeAsIds(texts)
+    tokens = sp.EncodeAsIds(texts)[:100]
     logits = learner.model(T(tokens).unsqueeze(0))
-    print(logits.shape)
     sorted_idx = np.argsort(logits.data.cpu().numpy(), 1)
     preds = []
     for i in range(1, 4):
           preds.append([sp.IdToPiece(x) for x in sorted_idx[:, -i].tolist()])
     # preds = list(map(lambda x: itos[x], np.argmax(logits.data.cpu().numpy(), 1)))
-    return pd.DataFrame({"orig": sp.EncodeAsPieces(texts)[-160:] + [""], 
-                  "pred_1": [""] + preds[0][-160:], "pred_2": [""] + preds[1][-160:], "pred_3": [""] + preds[2][-160:]})
+    print(len(preds[0]))
+    return pd.DataFrame({"orig": sp.EncodeAsPieces(texts)[-90:] + [""], 
+                  "pred_1": [""] + preds[0][-90:], "pred_2": [""] + preds[1][-90:], "pred_3": [""] + preds[2][-90:]})
 
 
-# In[55]:
+# In[63]:
 
 
 sp.DecodeIds(x[0, :].numpy().tolist())
 
 
-# In[56]:
+# In[64]:
 
 
 tmp = eval_text(sp.DecodeIds(x[6, :].numpy().tolist()))
 tmp
 
 
-# In[57]:
+# In[69]:
 
 
 eval_text("特朗普 政府 以为 加征 关税 会 令 中国 屈服 ， 这种 策略 肯定 会 适得其反 ， 如果 就业 和 财富")
 
 
-# In[58]:
+# In[70]:
 
 
 eval_text("对 中国 与 南洋 发动 全面 的 战争 。 1990 年代 ， 中")
