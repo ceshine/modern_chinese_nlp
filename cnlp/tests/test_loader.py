@@ -33,3 +33,21 @@ class TestLanguageModelLoder:
         assert x[0, 21] == y[0]
         assert np.array_equal(x[0, -29:].numpy(), y[:29].numpy())
         assert np.array_equal(x[1, -29:].numpy(), y[30:59].numpy())
+
+    def test_max_possible_length(self):
+        loader = LanguageModelLoader(
+            np.random.randint(0, 50, 1000),
+            target_length=30,
+            bs=2,
+            bptt=50,
+            batch_first=True,
+            randomize_bptt=False)
+        assert loader.max_possible_seq_len == 50
+        loader = LanguageModelLoader(
+            np.random.randint(0, 50, 1000),
+            target_length=30,
+            bs=2,
+            bptt=50,
+            batch_first=True,
+            randomize_bptt=True)
+        assert loader.max_possible_seq_len == 50 + 25

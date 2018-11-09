@@ -28,3 +28,4 @@ plots
 *Copy*
 .pytest_cache/README.md
 cnlp.egg-info/*
+.mypy_cache
