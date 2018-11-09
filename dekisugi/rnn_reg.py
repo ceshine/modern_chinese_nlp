@@ -6,6 +6,17 @@ import torch
 import torch.nn as nn
 
 
+def seq2seq_reg(output, xtra, loss, alpha=0, beta=0):
+    hs, dropped_hs = xtra
+    if alpha:  # Activation Regularization
+        loss = loss + (alpha * dropped_hs[-1].pow(2).mean()).sum()
+    if beta:   # Temporal Activation Regularization (slowness)
+        h = hs[-1]
+        if len(h) > 1:
+            loss = loss + (beta * (h[1:] - h[:-1]).pow(2).mean()).sum()
+    return loss
+
+
 def dropout_mask(x, sz, dropout):
     """ Applies a dropout mask whose size is determined by passed argument 'sz'.
     Args:
@@ -129,3 +140,68 @@ class WeightDrop(nn.Module):
         """
         self._setweights()
         return self.module.forward(*args)
+
+
+class EmbeddingDropout(nn.Module):
+    """ Applies dropout in the embedding layer by zeroing out some elements of the embedding vector.
+    Uses the dropout_mask custom layer to achieve this.
+
+    Args:
+        embed (torch.nn.Embedding): An embedding torch layer
+        words (torch.nn.Variable): A torch variable
+        dropout (float): dropout fraction to apply to the embedding weights
+        scale (float): additional scaling to apply to the modified embedding weights
+
+    Returns:
+        tensor of size: (batch_size x seq_length x embedding_size)
+
+    Example:
+
+    >> embed = torch.nn.Embedding(10,3)
+    >> words = Variable(torch.LongTensor([[1,2,4,5] ,[4,3,2,9]]))
+    >> words.size()
+        (2,4)
+    >> embed_dropout_layer = EmbeddingDropout(embed)
+    >> dropout_out_ = embed_dropout_layer(embed, words, dropout=0.40)
+    >> dropout_out_
+        Variable containing:
+        (0 ,.,.) =
+          1.2549  1.8230  1.9367
+          0.0000 -0.0000  0.0000
+          2.2540 -0.1299  1.5448
+          0.0000 -0.0000 -0.0000
+
+        (1 ,.,.) =
+          2.2540 -0.1299  1.5448
+         -4.0457  2.4815 -0.2897
+          0.0000 -0.0000  0.0000
+          1.8796 -0.4022  3.8773
+        [torch.FloatTensor of size 2x4x3]
+    """
+
+    def __init__(self, embed, dropout=0.1):
+        super().__init__()
+        self.embed = embed
+        self.weight = self.embed.weight
+        self.dropout = dropout
+
+    def forward(self, words, dropout=0.1, scale=None):
+        if self.training:
+            size = (self.embed.weight.size(0), 1)
+            mask = dropout_mask(self.embed.weight.data, size, self.dropout)
+            masked_embed_weight = mask * self.embed.weight
+        else:
+            masked_embed_weight = self.embed.weight
+
+        if scale:
+            masked_embed_weight = scale * masked_embed_weight
+
+        padding_idx = self.embed.padding_idx
+        if padding_idx is None:
+            padding_idx = -1
+
+        X = nn.functional.embedding(
+            words,
+            masked_embed_weight, padding_idx, self.embed.max_norm,
+            self.embed.norm_type, self.embed.scale_grad_by_freq, self.embed.sparse)
+        return X

@@ -27,7 +27,7 @@ class RNNStack(nn.Module):
         Parameters
         ----------
         emb_sz : int
-             the embedding size used to encode each token
+            the embedding size used to encode each token
         n_hid : int
             number of hidden units per layer.
         n_layers : int
@@ -85,7 +85,7 @@ class RNNStack(nn.Module):
             self.bs = bs
             self.reset()
         with torch.set_grad_enabled(self.training):
-            raw_output = emb
+            raw_output = self.dropouti(emb)
             new_hidden, raw_outputs, outputs = [], [], []
             for l, (rnn, drop) in enumerate(zip(self.rnns, self.dropouths)):
                 current_input = raw_output
