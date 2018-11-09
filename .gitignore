@@ -26,3 +26,5 @@ plots
 *.zip
 *.npy
 *Copy*
+.pytest_cache/README.md
+cnlp.egg-info/*
