@@ -51,7 +51,7 @@ class TestRNNStack:
         assert output[-1].size() == (5, 2, 16)
         # check if hidden states have been changed
         for i in range(lstm_model.n_layers):
-            assert not lstm_model.hidden[i][0].equal(
+            assert not hidden[i][0].equal(
                 torch.zeros(1, 1, 16, dtype=torch.float32))
-            assert not lstm_model.hidden[i][1].equal(
+            assert not hidden[i][1].equal(
                 torch.zeros(1, 1, 16, dtype=torch.float32))

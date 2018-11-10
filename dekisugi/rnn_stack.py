@@ -86,9 +86,8 @@ class RNNStack(nn.Module):
             self.reset()
         with torch.set_grad_enabled(self.training):
             raw_output = self.dropouti(emb)
-            new_hidden, raw_outputs, outputs = [], [], []
+            new_hidden, raw_outputs = [], []
             for l, (rnn, drop) in enumerate(zip(self.rnns, self.dropouths)):
-                current_input = raw_output
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     raw_output, new_h = rnn(raw_output, self.hidden[l])
@@ -96,9 +95,8 @@ class RNNStack(nn.Module):
                 raw_outputs.append(raw_output)
                 if l != self.n_layers - 1:
                     raw_output = drop(raw_output)
-                outputs.append(raw_output)
             self.hidden = repackage_var(new_hidden)
-        return raw_outputs, outputs
+        return raw_outputs, self.hidden
 
     def one_hidden(self, l):
         nh = self.n_hid // self.ndir
