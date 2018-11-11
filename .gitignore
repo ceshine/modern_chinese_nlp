@@ -27,5 +27,5 @@ plots
 *.npy
 *Copy*
 .pytest_cache/README.md
-cnlp.egg-info/*
+*.egg-info/*
 .mypy_cache

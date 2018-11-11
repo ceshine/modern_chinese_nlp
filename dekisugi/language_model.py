@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 
 from .rnn_stack import RNNStack
 from .embeddings import BasicEmbeddings
@@ -51,9 +52,9 @@ class RNNLanguageModel(nn.Module):
         return logits, rnn_states
 
     def reset(self):
-        for c in self.children():
-            if hasattr(c, 'reset'):
-                c.reset()
+        for ch in self.children():
+            if hasattr(ch, 'reset'):
+                ch.reset()
 
 
 def get_language_model(
@@ -73,3 +74,67 @@ def get_language_model(
     rnn_stack = RNNStack(emb_sz, rnn_hid, rnn_layers, bidir,
                          dropouth, dropouti, wdrop, qrnn)
     return RNNLanguageModel(embeddings, rnn_stack, tie_weights)
+
+
+class LanguageModelLoader:
+    """ Returns a language model iterator that iterates through batches that are of length N(bptt,5)
+
+    (Directly copied from fast.ai v0.7 with minor variable changes.)
+    The first batch returned is always bptt+25; the max possible width.
+    This is done because of they way that pytorch allocates cuda memory in order to prevent multiple
+    buffers from being created as the batch width grows.
+    """
+
+    def __init__(self, arr, batch_size: int, bptt: int, backwards: bool = False, randomize: bool = False):
+        """Constructor for LanguageModelLoader
+
+        Parameters
+        ----------
+        arr : np.array
+            An numpy array containing all the tokens.
+        batch_size : int
+            The desired batch size.
+        bptt : int
+            The target sequence length (roughly) of the batch
+        backwards : bool, optional
+            Flip the order of the sequence if True. (the default is False)
+        randomize : bool, optional
+            Randomize the sequence length.
+        """
+        self.batch_size, self.bptt, self.backwards = batch_size, bptt, backwards
+        self.randomize = randomize
+        self.data = self.batchify(arr)
+        self.i, self.iter = 0, 0
+        self.n_tokens = len(self.data)
+
+    def __iter__(self):
+        self.i, self.iter = 0, 0
+        while self.i < self.n_tokens-1 and self.iter < len(self):
+            if self.randomize:
+                if self.i == 0:
+                    seq_len = self.bptt + 5 * 5
+                else:
+                    bptt = self.bptt if np.random.random() < 0.95 else self.bptt / 2.
+                    seq_len = max(5, int(np.random.normal(bptt, 5)))
+            else:
+                seq_len = self.bptt
+            res = self.get_batch(self.i, seq_len)
+            self.i += seq_len
+            self.iter += 1
+            yield res
+
+    def __len__(self):
+        return self.n_tokens // self.bptt - 1
+
+    def batchify(self, data):
+        n_batches = data.shape[0] // self.batch_size
+        data = np.array(data[:n_batches*self.batch_size])
+        data = data.reshape(self.batch_size, -1).T
+        if self.backwards:
+            data = data[::-1]
+        return torch.from_numpy(data).long()
+
+    def get_batch(self, i, seq_len):
+        source = self.data
+        seq_len = min(seq_len, len(source) - 1 - i)
+        return source[i:i+seq_len], source[i+1:i+1+seq_len].contiguous().view(-1)
