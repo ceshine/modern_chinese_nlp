@@ -22,14 +22,12 @@ class RNNLanguageModel(nn.Module):
                 nn.Linear(embeddings.emb_sz, embeddings.voc_sz, bias=False)
             )
             self.init_fcn(self.decoder)
-            if tie_weights:
-                self.decoder[-1].weight = self.embeddings.encoder.weight
         else:
             self.decoder = nn.Sequential(
                 nn.Linear(rnn_stack.n_hid, embeddings.voc_sz, bias=False))
             self.init_fcn(self.decoder)
-            if tie_weights:
-                self.decoder.weight = self.embeddings.encoder.weight
+        if tie_weights:
+            self.decoder[-1].weight = self.embeddings.encoder.weight
 
     @staticmethod
     def init_fcn(fcn):
