@@ -67,7 +67,6 @@ def main():
         clip_grad=25.,
         log_dir=MODEL_PATH / "logs",
         checkpoint_dir=MODEL_PATH,
-        batch_idx=0,
         echo=True,
         use_tensorboard=False,
         avg_window=len(trn_loader) // 10 * 2
@@ -86,7 +85,7 @@ def main():
     )
     bot.remove_checkpoints(keep=1)
     bot.export_encoder(
-        bot.best_performers[0],
+        bot.best_performers[0][1],
         prefix="lstm_500x3_emb_7500x500_")
     test_loss = bot.eval(tst_loader)
     bot.logger.info("Test loss: %.4f", test_loss)

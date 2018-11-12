@@ -25,8 +25,8 @@ class RNNLanguageModel(nn.Module):
             if tie_weights:
                 self.decoder[-1].weight = self.embeddings.encoder.weight
         else:
-            self.decoder = nn.Linear(
-                rnn_stack.n_hid, rnn_stack.emb_sz, bias=False)
+            self.decoder = nn.Sequential(
+                nn.Linear(rnn_stack.n_hid, embeddings.voc_sz, bias=False))
             self.init_fcn(self.decoder)
             if tie_weights:
                 self.decoder.weight = self.embeddings.encoder.weight
@@ -191,8 +191,8 @@ class LMBot(BaseBot):
         """
         self.load_model(target_path)
         torch.save(
-            self.model.embeddings.state_dict(),
+            self.model.embeddings,
             self.checkpoint_dir / f"{prefix}embeddings.pth")
         torch.save(
-            self.model.rnn_stack.state_dict(),
+            self.model.rnn_stack,
             self.checkpoint_dir / f"{prefix}rnn_stack.pth")
