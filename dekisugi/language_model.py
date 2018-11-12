@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import torch.nn as nn
 import numpy as np
+
+from helperbot.bot import BaseBot
 
 from .rnn_stack import RNNStack
 from .embeddings import BasicEmbeddings
@@ -138,3 +142,57 @@ class LanguageModelLoader:
         source = self.data
         seq_len = min(seq_len, len(source) - 1 - i)
         return source[i:i+seq_len], source[i+1:i+1+seq_len].contiguous().view(-1)
+
+
+class LMBot(BaseBot):
+    name = "LM"
+
+    def __init__(self, model, train_loader, val_loader, *, optimizer, clip_grad=0,
+                 avg_window=2000, log_dir="./data/cache/logs/", log_level=logging.INFO,
+                 checkpoint_dir="./data/cache/model_cache/", batch_idx=0, echo=False,
+                 device="cuda:0", use_tensorboard=False):
+        super().__init__(
+            model, train_loader, val_loader,
+            optimizer=optimizer,
+            clip_grad=0,
+            avg_window=avg_window,
+            log_dir=log_dir,
+            log_level=log_level,
+            checkpoint_dir=checkpoint_dir,
+            batch_idx=batch_idx,
+            echo=echo,
+            device=device,
+            use_tensorboard=use_tensorboard
+        )
+        self.criterion = torch.nn.CrossEntropyLoss()
+        self.loss_format = "%.4f"
+
+    @staticmethod
+    def extract_prediction(output):
+        return output[0].view(-1, output[0].size(2))
+
+    def eval(self, loader):
+        self.model.reset()
+        loss = super().eval(loader)
+        self.model.reset()
+        return loss
+
+    def export_encoder(self, target_path: str, prefix: str = ""):
+        """Export the embedding and RNN stack
+
+        WARNING: It also loads the model from the target path
+
+        Parameters
+        ----------
+        target_path : str
+            Where the dumped state dict is stored.
+        prefix : str
+            The prefix used in the file names.
+        """
+        self.load_model(target_path)
+        torch.save(
+            self.model.embeddings.state_dict(),
+            self.checkpoint_dir / f"{prefix}embeddings.pth")
+        torch.save(
+            self.model.rnn_stack.state_dict(),
+            self.checkpoint_dir / f"{prefix}rnn_stack.pth")
