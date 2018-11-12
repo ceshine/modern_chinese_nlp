@@ -1,5 +1,4 @@
 from pathlib import Path
-from functools import partial
 import logging
 
 from sklearn.model_selection import train_test_split
@@ -49,6 +48,26 @@ class LMBot(BaseBot):
         loss = super().eval(loader)
         self.model.reset()
         return loss
+
+    def export_encoder(self, target_path: str, prefix: str = ""):
+        """Export the embedding and RNN stack
+
+        WARNING: It also loads the model from the target path
+
+        Parameters
+        ----------
+        target_path : str
+            Where the dumped state dict is stored.
+        prefix : str
+            The prefix used in the file names.
+        """
+        self.load_model(target_path)
+        torch.save(
+            self.model.embeddings.state_dict(),
+            self.checkpoint_dir / f"{prefix}embeddings.pth")
+        torch.save(
+            self.model.rnn_stack.state_dict(),
+            self.checkpoint_dir / f"{prefix}rnn_stack.pth")
 
 
 def get_tokens():
@@ -122,6 +141,9 @@ def main():
             steps_per_cycle=n_steps)
     )
     bot.remove_checkpoints(keep=1)
+    bot.export_encoder(
+        bot.best_performers[0],
+        prefix="lstm_500x3_emb_7500x500_")
     test_loss = bot.eval(tst_loader)
     print("Test loss: %.4f" % test_loss)
 
