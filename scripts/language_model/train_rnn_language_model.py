@@ -58,7 +58,6 @@ def main():
         tie_weights=True
     )
     model = model.to("cuda:0")
-    print(model)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=2e-3, betas=(0.8, 0.999))
     bot = LMBot(
