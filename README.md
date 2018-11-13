@@ -7,6 +7,7 @@ My humble contribution to the democratization of the Chinese NLP technology (cur
 Blog post(s):
 
 1. [[Preview] Developing Modern Chinese NLP Models](https://medium.com/the-artificial-impostor/preview-developing-modern-chinese-nlp-models-60d4774ebfa7) - Briefly described dataset preparation processes and some preliminary results.
+2. [[NLP] Four Ways to Tokenize Chinese Documents](https://medium.com/the-artificial-impostor/nlp-four-ways-to-tokenize-chinese-documents-f349eb6ba3c3)
 
 ## Environment
 
