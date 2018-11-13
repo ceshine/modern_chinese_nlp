@@ -9,11 +9,11 @@ import numpy as np
 import joblib
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+from helperbot.lr_scheduler import TriangularLR
+from helperbot import setup_differential_learning_rates, freeze_layers
 
 from dekisugi.language_model import RNNLanguageModel
 from dekisugi.language_model import LanguageModelLoader, get_language_model, LMBot
-from helperbot.lr_scheduler import TriangularLR
-from helperbot import setup_differential_learning_rates, freeze_layers
 
 MODEL_PATH = Path("data/cache/douban_dk/")
 
@@ -50,13 +50,13 @@ def prepare_dataset(model: RNNLanguageModel):
         for line in f.readlines():
             itos.append(line.split("\t")[0])
     mapping_orig = {s: idx for idx, s in enumerate(itos_orig)}
-    # tokens = []
-    # for i, row in tqdm(df_ratings.iterrows(), total=df_ratings.shape[0]):
-    #     tokens.append(np.array([BEG] + sp.EncodeAsIds(row["comment"])))
-    # assert len(tokens) == df_ratings.shape[0]
-    # joblib.dump(tokens, "data/cache/douban_tokens.pkl")
+    tokens = []
+    for i, row in tqdm(df_ratings.iterrows(), total=df_ratings.shape[0]):
+        tokens.append(np.array([BEG] + sp.EncodeAsIds(row["comment"])))
+    assert len(tokens) == df_ratings.shape[0]
+    joblib.dump(tokens, "data/cache/douban_tokens.pkl")
     del df_ratings
-    tokens = joblib.load("data/cache/douban_tokens.pkl")
+    # tokens = joblib.load("data/cache/douban_tokens.pkl")
     trn_tokens, val_tokens, tst_tokens, voc_sz = split_tokens(tokens)
     # Prepare the embedding matrix
     model.embeddings.voc_sz = voc_sz
@@ -132,7 +132,8 @@ def main():
         checkpoint_dir=MODEL_PATH,
         echo=True,
         use_tensorboard=False,
-        avg_window=len(trn_loader) // 10 * 2
+        avg_window=len(trn_loader) // 10 * 2,
+        device=DEVICE
     )
     bot.logger.info(str(model))
     assert bot.model.embeddings.encoder.weight is bot.model.decoder[-1].weight
