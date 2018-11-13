@@ -152,7 +152,7 @@ class LMBot(BaseBot):
         super().__init__(
             model, train_loader, val_loader,
             optimizer=optimizer,
-            clip_grad=0,
+            clip_grad=clip_grad,
             avg_window=avg_window,
             log_dir=log_dir,
             log_level=log_level,
