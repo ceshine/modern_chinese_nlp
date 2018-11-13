@@ -1,3 +1,0 @@
-[submodule "fastai"]
-	path = legacy/fastai
-	url = git@github.com:ceshine/fastai.git
