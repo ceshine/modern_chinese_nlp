@@ -179,6 +179,7 @@ def regressor():
     )
     bot.remove_checkpoints(keep=1)
 
+    bot.load_model(bot.best_performers[0])
     tst_samp = SortSampler(
         tst_ds.x, key=lambda x: len(tst_ds.x[x]))
     tst_loader = DataLoader(
@@ -189,8 +190,76 @@ def regressor():
 
 
 def regressor_from_scratch():
-    pass
+    model_path = Path("data/cache/douban_dk_from_scratch/")
+    batch_size = 32
+    trn_ds, val_ds, tst_ds = prepare_dataset()
+    model = get_sequence_model(
+        7500,
+        emb_sz=500,
+        pad_idx=2,
+        dropoute=0,
+        rnn_hid=500,
+        rnn_layers=3,
+        bidir=False,
+        dropouth=0.2,
+        dropouti=0.2,
+        wdrop=0.05,
+        qrnn=False,
+        fcn_layers=[50, 1],
+        fcn_dropouts=[0.1, 0.1]
+    )
+
+    model = model.to(DEVICE)
+
+    trn_samp = SortishSampler(
+        trn_ds.x, key=lambda x: len(trn_ds.x[x]), bs=batch_size)
+    val_samp = SortSampler(
+        val_ds.x, key=lambda x: len(val_ds.x[x]))
+    trn_loader = DataLoader(
+        trn_ds, batch_size, transpose=True,
+        num_workers=1, pad_idx=2, sampler=trn_samp)
+    val_loader = DataLoader(
+        val_ds, batch_size * 2, transpose=True,
+        num_workers=1, pad_idx=2, sampler=val_samp)
+
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=2e-4, betas=(0.7, 0.99))
+    bot = SequenceRegressorBot(
+        model, trn_loader, val_loader,
+        optimizer=optimizer,
+        clip_grad=25.,
+        log_dir=model_path / "logs_reg",
+        checkpoint_dir=model_path,
+        echo=True,
+        use_tensorboard=False,
+        avg_window=len(trn_loader) // 10 * 2,
+        device=DEVICE
+    )
+    bot.logger.info(str(model))
+
+    # Train all groups
+    n_steps = len(trn_loader) * 15
+    bot.train(
+        n_steps,
+        log_interval=len(trn_loader) // 10,
+        snapshot_interval=len(trn_loader) // 10 * 5,
+        min_improv=1e-3,
+        scheduler=TriangularLR(
+            optimizer, max_mul=64, ratio=8,
+            steps_per_cycle=n_steps)
+    )
+    bot.remove_checkpoints(keep=1)
+
+    bot.load_model(bot.best_performers[0])
+    tst_samp = SortSampler(
+        tst_ds.x, key=lambda x: len(tst_ds.x[x]))
+    tst_loader = DataLoader(
+        tst_ds, batch_size * 2, transpose=True,
+        num_workers=1, pad_idx=2, sampler=tst_samp)
+    test_loss = bot.eval(tst_loader)
+    bot.logger.info("Test loss: %.4f", test_loss)
 
 
 if __name__ == "__main__":
     regressor()
+    # regressor_from_scratch()
