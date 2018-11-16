@@ -20,7 +20,7 @@ UNK = 0
 BEG = 1
 EMB_DIM = 500
 
-MODEL_PATH = Path("data/cache/douban_dk/")
+MODEL_PATH = Path("data/cache/douban_dk_noseg/")
 DEVICE = "cuda:0"
 
 
@@ -40,13 +40,13 @@ def filter_entries(tokens, df_ratings, min_len=1, max_len=1000):
 
 
 def prepare_dataset():
-    cache_path = Path("data/cache/douban_sentiment_tokens.pkl")
+    cache_path = Path("/tmp/douban_sentiment_tokens.pkl")
     if cache_path.exists():
         tokens, df_ratings = joblib.load(cache_path)
     else:
         sp = spm.SentencePieceProcessor()
-        sp.Load("data/rating_unigram_model.model")
-        df_ratings = pd.read_csv("data/ratings_word.csv")
+        sp.Load("data/rating_unigram_False.model")
+        df_ratings = pd.read_csv("data/ratings_prepared.csv")
         tokens = []
         for _, row in tqdm(df_ratings.iterrows(), total=df_ratings.shape[0]):
             tokens.append(sp.EncodeAsIds(row["comment"]))

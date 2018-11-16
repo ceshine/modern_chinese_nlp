@@ -1,8 +1,8 @@
 from pathlib import Path
 from functools import partial
 
-import torch.nn as nn
 import torch
+import torch.nn as nn
 import sentencepiece as spm
 import pandas as pd
 import numpy as np
@@ -15,7 +15,7 @@ from helperbot import setup_differential_learning_rates, freeze_layers
 from dekisugi.language_model import RNNLanguageModel
 from dekisugi.language_model import LanguageModelLoader, get_language_model, LMBot
 
-MODEL_PATH = Path("data/cache/douban_dk/")
+MODEL_PATH = Path("data/cache/douban_dk_noseg/")
 
 UNK = 0
 BEG = 1
@@ -39,24 +39,27 @@ def split_tokens(tokens):
 
 def prepare_dataset(model: RNNLanguageModel):
     sp = spm.SentencePieceProcessor()
-    sp.Load("data/rating_unigram_model.model")
-    df_ratings = pd.read_csv("data/ratings_word.csv")
+    sp.Load("data/rating_unigram_False.model")
     itos_orig = []
-    with open("data/unigram_model.vocab", mode="r", encoding="utf-8") as f:
+    with open("data/unigram_False_model.vocab", mode="r", encoding="utf-8") as f:
         for line in f.readlines():
             itos_orig.append(line.split("\t")[0])
     itos = []
-    with open("data/rating_unigram_model.vocab", mode="r", encoding="utf-8") as f:
+    with open("data/rating_unigram_False.vocab", mode="r", encoding="utf-8") as f:
         for line in f.readlines():
             itos.append(line.split("\t")[0])
     mapping_orig = {s: idx for idx, s in enumerate(itos_orig)}
-    tokens = []
-    for i, row in tqdm(df_ratings.iterrows(), total=df_ratings.shape[0]):
-        tokens.append(np.array([BEG] + sp.EncodeAsIds(row["comment"])))
-    assert len(tokens) == df_ratings.shape[0]
-    joblib.dump(tokens, "data/cache/douban_tokens.pkl")
-    del df_ratings
-    # tokens = joblib.load("data/cache/douban_tokens.pkl")
+    cache_path = Path("/tmp/douban_tokens.pkl")
+    if cache_path.exists():
+        tokens = joblib.load("data/cache/douban_tokens.pkl")
+    else:
+        df_ratings = pd.read_csv("data/ratings_prepared.csv")
+        tokens = []
+        for i, row in tqdm(df_ratings.iterrows(), total=df_ratings.shape[0]):
+            tokens.append(np.array([BEG] + sp.EncodeAsIds(row["comment"])))
+        assert len(tokens) == df_ratings.shape[0]
+        joblib.dump(tokens, cache_path)
+        del df_ratings
     trn_tokens, val_tokens, tst_tokens, voc_sz = split_tokens(tokens)
     # Prepare the embedding matrix
     model.embeddings.voc_sz = voc_sz
@@ -108,7 +111,7 @@ def main():
     )
     model.to(DEVICE)
     model.load_state_dict(torch.load(
-        "data/cache/lm_unigram_dk/snapshot_LM_3.9928.pth"))
+        "data/cache/lm_unigram_dk_noseg/snapshot_LM_4.2663.pth"))
     trn_tokens, val_tokens, tst_tokens, voc_sz = prepare_dataset(model)
     trn_loader = LanguageModelLoader(
         np.concatenate(trn_tokens), BATCH_SIZE, BPTT)

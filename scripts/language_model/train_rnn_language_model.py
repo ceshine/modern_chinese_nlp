@@ -8,14 +8,14 @@ import torch
 from dekisugi.language_model import LanguageModelLoader, get_language_model, LMBot
 from helperbot.lr_scheduler import TriangularLR
 
-MODEL_PATH = Path("data/cache/lm_unigram_dk/")
+MODEL_PATH = Path("data/cache/lm_unigram_dk_noseg/")
 MODEL_PATH.mkdir(parents=True, exist_ok=True)
 BATCH_SIZE = 64
 BPTT = 75
 
 
 def get_tokens():
-    tokens = joblib.load("data/tokens_unigram.pkl")
+    tokens = joblib.load("data/tokens_unigram_False.pkl")
     # Filter out empty texts
     tokens = [x for x in tokens if x.shape[0] > 0]
     print_voc_stats(tokens)

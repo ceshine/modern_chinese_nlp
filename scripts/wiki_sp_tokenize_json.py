@@ -20,7 +20,7 @@ from wiki_tokenize_json import clean_text, filter_texts, SECTION_BLACKLIST
 DATAPATH = "/mnt/Intel/zhwiki.json.gz"
 TMPPATH = "/mnt/Intel/tmp_texts.txt"
 TMPPATH_WORD = "/mnt/Intel/tmp_words.txt"
-MODEL_PREFIX = "data/{algorithm}_model"
+MODEL_PREFIX = "data/{algorithm}_{seg_word}_model"
 
 CC = OpenCC('t2s')
 VOC_SIZE = 7500
@@ -66,7 +66,7 @@ def fit_model(seg_word=True, algorithm="bpe"):
         '--input_sentence_size=20000000 '
         '--character_coverage=0.995 --model_type={algorithm}'.format(
             TMPPATH_WORD if seg_word else TMPPATH,
-            MODEL_PREFIX.format(algorithm=algorithm),
+            MODEL_PREFIX.format(algorithm=algorithm, seg_word=seg_word),
             VOC_SIZE, algorithm="unigram"
         )
     )
@@ -75,14 +75,15 @@ def fit_model(seg_word=True, algorithm="bpe"):
 def tokenize(seg_word=True, algorithm="bpe"):
     print("Tokenizing...")
     sp = spm.SentencePieceProcessor()
-    sp.Load(MODEL_PREFIX.format(algorithm=algorithm) + ".model")
+    sp.Load(MODEL_PREFIX.format(
+        algorithm=algorithm, seg_word=seg_word) + ".model")
     tokens = []
     with open(TMPPATH_WORD if seg_word else TMPPATH) as f:
         for _, sentence in tqdm(enumerate(f.readlines())):
             tokens.append(
                 np.array(sp.EncodeAsIds(sentence))
             )
-    joblib.dump(np.array(tokens), f"data/tokens_{algorithm}.pkl")
+    joblib.dump(np.array(tokens), f"data/tokens_{algorithm}_{seg_word}.pkl")
 
 
 @click.command()
@@ -91,7 +92,7 @@ def tokenize(seg_word=True, algorithm="bpe"):
 def main(word, bpe):
     seg_word = True if word else False
     algorithm = "bpe" if bpe else "unigram"
-    fit_model(seg_word, algorithm)
+    # fit_model(seg_word, algorithm)
     tokenize(seg_word, algorithm)
 
 
