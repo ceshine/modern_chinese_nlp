@@ -56,7 +56,7 @@ def prepare_dataset(model: RNNLanguageModel):
     if cache_path.exists():
         tokens = joblib.load(cache_path)
     else:
-        df_ratings = pd.read_csv("data/ratings_prepared.csv")
+        df_ratings = pd.read_csv(f"data/ratings_prepared_{WORD_SEG}.csv")
         tokens = []
         for i, row in tqdm(df_ratings.iterrows(), total=df_ratings.shape[0]):
             tokens.append(np.array([BEG] + sp.EncodeAsIds(row["comment"])))

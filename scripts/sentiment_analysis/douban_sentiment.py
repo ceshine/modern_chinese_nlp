@@ -41,13 +41,13 @@ def filter_entries(tokens, df_ratings, min_len=1, max_len=1000):
 
 
 def prepare_dataset():
-    cache_path = Path("/tmp/douban_sentiment_tokens.pkl")
+    cache_path = Path(f"/tmp/douban_sentiment_tokens_{WORD_SEG}.pkl")
     if cache_path.exists():
         tokens, df_ratings = joblib.load(cache_path)
     else:
         sp = spm.SentencePieceProcessor()
         sp.Load(f"data/rating_unigram_{WORD_SEG}.model")
-        df_ratings = pd.read_csv("data/ratings_prepared.csv")
+        df_ratings = pd.read_csv(f"data/ratings_prepared_{WORD_SEG}.csv")
         tokens = []
         for _, row in tqdm(df_ratings.iterrows(), total=df_ratings.shape[0]):
             tokens.append(sp.EncodeAsIds(row["comment"]))

@@ -9,7 +9,7 @@ from tqdm import tqdm
 DATAPATH = "data/douban_ratings.csv"
 TMPPATH = "/tmp/ratings.txt"
 TMPPATH_WORD = "/tmp/ratings_word.txt"
-TARGETPATH = "data/ratings_prepared.csv"
+TARGETPATH = "data/ratings_prepared_{seg_word}.csv"
 MODEL_PREFIX = "data/rating_{algorithm}_{seg_word}"
 
 VOC_SIZE = 7500
@@ -55,7 +55,7 @@ def main(word, bpe):
         "comment": comments,
         "rating": ratings.rating
     })
-    final_ratings.to_csv(TARGETPATH, index=False)
+    final_ratings.to_csv(TARGETPATH.format(seg_word=seg_word), index=False)
 
 
 if __name__ == "__main__":

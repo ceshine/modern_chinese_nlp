@@ -27,7 +27,7 @@ model = get_sequence_model(
 
 
 import torch
-model.load_state_dict(torch.load("../data/cache/douban_dk_seg/snapshot_seq_regressor_0.155700.pth"))
+model.load_state_dict(torch.load("../data/cache/douban_dk_noseg/snapshot_seq_regressor_0.153608.pth"))
 
 
 # In[3]:
@@ -35,7 +35,7 @@ model.load_state_dict(torch.load("../data/cache/douban_dk_seg/snapshot_seq_regre
 
 import sentencepiece as spm
 sp = spm.SentencePieceProcessor()
-sp.Load("../data/rating_unigram_True.model")
+sp.Load("../data/rating_unigram_False.model")
 
 
 # In[4]:
@@ -56,25 +56,25 @@ def get_prediction(texts):
 # In[5]:
 
 
-get_prediction("看 了 快 一半 了 才 发现 是 mini 的 广告")
+get_prediction("看了快一半了才发现是mini的广告")
 
 
 # In[6]:
 
 
-get_prediction("妈蛋 ， 简直 太 好看 了 。 最后 的 DJ battle 部分 ， 兴奋 的 我 ， 简直 想 从 座位 上 站 起来 一起 扭")
+get_prediction("妈蛋，简直太好看了。最后的DJ battle部分，兴奋的我，简直想从座位上站起来一起扭")
 
 
 # In[7]:
 
 
-get_prediction("太 烂 了 ， 难看 至极 。")
+get_prediction("太烂了，难看至极。")
 
 
 # In[8]:
 
 
-get_prediction("看完 之后 很 生气 ！ 剧情 太差 了")
+get_prediction("看完之后很生气！剧情太差了")
 
 
 # ## For Debug Purpose
@@ -85,7 +85,7 @@ get_prediction("看完 之后 很 生气 ！ 剧情 太差 了")
 
 
 import pandas as pd
-df_ratings = pd.read_csv("../data/ratings_prepared_True.csv")
+df_ratings = pd.read_csv("../data/ratings_prepared_False.csv")
 
 
 # In[10]:
@@ -106,11 +106,11 @@ evaluate_labeled_row(1024)
 
 # ### Reproduce the dataset, and Recalculate the Validation and Test Scores
 
-# In[ ]:
+# In[12]:
 
 
 import tqdm
-WORD_SEG = True
+WORD_SEG = False
 sp = spm.SentencePieceProcessor()
 sp.Load(f"../data/rating_unigram_{WORD_SEG}.model")
 df_ratings = pd.read_csv(f"../data/ratings_prepared_{WORD_SEG}.csv")
@@ -121,7 +121,7 @@ for _, row in tqdm.tqdm_notebook(df_ratings.iterrows(), total=df_ratings.shape[0
 assert len(tokens) == df_ratings.shape[0]
 
 
-# In[23]:
+# In[13]:
 
 
 def filter_entries(tokens, df_ratings, min_len=1, max_len=1000):
@@ -140,7 +140,7 @@ tokens, df_ratings = filter_entries(
 tokens = truncate_tokens(tokens, max_len=100)
 
 
-# In[24]:
+# In[14]:
 
 
 from sklearn.model_selection import StratifiedShuffleSplit
@@ -155,7 +155,7 @@ tokens_valid, tokens_test = tokens_test[val_idx], tokens_test[test_idx]
 y_valid, y_test = y_test[val_idx], y_test[test_idx]
 
 
-# In[25]:
+# In[15]:
 
 
 from dekisugi.dataset import TextDataset
@@ -173,7 +173,7 @@ val_loader = DataLoader(
 
 # #### Validation
 
-# In[26]:
+# In[16]:
 
 
 model.cuda()
@@ -184,13 +184,13 @@ with torch.set_grad_enabled(False):
         losses.append(np.square(model(input_tensor)[:, 0] - target_tensor[:, 0]).data.numpy())
 
 
-# In[27]:
+# In[17]:
 
 
 np.mean(np.concatenate(losses))
 
 
-# In[30]:
+# In[18]:
 
 
 sp.DecodeIds(val_ds[21][0].tolist())
@@ -198,7 +198,7 @@ sp.DecodeIds(val_ds[21][0].tolist())
 
 # #### Use the  Previously Used Metric (Validation)
 
-# In[37]:
+# In[19]:
 
 
 model.cuda()
@@ -210,7 +210,7 @@ with torch.set_grad_enabled(False):
             2 * (model(input_tensor)[:, 0] - target_tensor[:, 0])).data.numpy())
 
 
-# In[38]:
+# In[20]:
 
 
 np.mean(np.concatenate(losses))
@@ -218,7 +218,7 @@ np.mean(np.concatenate(losses))
 
 # #### Test
 
-# In[32]:
+# In[21]:
 
 
 tst_samp = SortSampler(
@@ -228,7 +228,7 @@ tst_loader = DataLoader(
     num_workers=1, pad_idx=2, sampler=tst_samp)
 
 
-# In[34]:
+# In[22]:
 
 
 model.cuda()
@@ -239,7 +239,7 @@ with torch.set_grad_enabled(False):
         losses.append(np.square(model(input_tensor)[:, 0] - target_tensor[:, 0]).data.numpy())
 
 
-# In[35]:
+# In[23]:
 
 
 np.mean(np.concatenate(losses))
