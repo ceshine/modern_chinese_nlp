@@ -22,10 +22,10 @@ COPY --chown=docker:root setup.py /home/docker/project/setup.py
 COPY --chown=docker:root jupyter_notebook_config.json /home/docker/project/
 COPY --chown=docker:root jupyter_notebook_config.py /home/docker/project/
 
+RUN sudo chown docker:root /home/docker/project
+RUN pip install https://github.com/ceshine/pytorch_helper_bot/archive/0.0.2.zip && \
+  pip install tensorboardX && rm -rf ~/.cache/pip
 RUN cd /home/docker/project && pip install -e  .
-
-RUN pip uninstall -y opencv-python
-RUN conda install -y opencv
 
 WORKDIR /home/docker/project
 
