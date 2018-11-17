@@ -15,7 +15,10 @@ from helperbot import setup_differential_learning_rates, freeze_layers
 from dekisugi.language_model import RNNLanguageModel
 from dekisugi.language_model import LanguageModelLoader, get_language_model, LMBot
 
-MODEL_PATH = Path("data/cache/douban_dk_noseg/")
+MODEL_PATH = Path("data/cache/douban_dk_seg/")
+# LM_PATH = "data/cache/lm_unigram_dk_noseg/snapshot_LM_4.2663.pth"
+LM_PATH = "data/cache/lm_unigram_dk/snapshot_LM_3.9928.pth"
+WORD_SEG = True
 
 UNK = 0
 BEG = 1
@@ -39,19 +42,19 @@ def split_tokens(tokens):
 
 def prepare_dataset(model: RNNLanguageModel):
     sp = spm.SentencePieceProcessor()
-    sp.Load("data/rating_unigram_False.model")
+    sp.Load(f"data/rating_unigram_{WORD_SEG}.model")
     itos_orig = []
-    with open("data/unigram_False_model.vocab", mode="r", encoding="utf-8") as f:
+    with open(f"data/unigram_{WORD_SEG}_model.vocab", mode="r", encoding="utf-8") as f:
         for line in f.readlines():
             itos_orig.append(line.split("\t")[0])
     itos = []
-    with open("data/rating_unigram_False.vocab", mode="r", encoding="utf-8") as f:
+    with open(f"data/rating_unigram_{WORD_SEG}.vocab", mode="r", encoding="utf-8") as f:
         for line in f.readlines():
             itos.append(line.split("\t")[0])
     mapping_orig = {s: idx for idx, s in enumerate(itos_orig)}
     cache_path = Path("/tmp/douban_tokens.pkl")
     if cache_path.exists():
-        tokens = joblib.load("data/cache/douban_tokens.pkl")
+        tokens = joblib.load(cache_path)
     else:
         df_ratings = pd.read_csv("data/ratings_prepared.csv")
         tokens = []
@@ -110,8 +113,7 @@ def main():
         tie_weights=True
     )
     model.to(DEVICE)
-    model.load_state_dict(torch.load(
-        "data/cache/lm_unigram_dk_noseg/snapshot_LM_4.2663.pth"))
+    model.load_state_dict(torch.load(LM_PATH))
     trn_tokens, val_tokens, tst_tokens, voc_sz = prepare_dataset(model)
     trn_loader = LanguageModelLoader(
         np.concatenate(trn_tokens), BATCH_SIZE, BPTT)

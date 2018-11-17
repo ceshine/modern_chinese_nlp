@@ -20,7 +20,8 @@ UNK = 0
 BEG = 1
 EMB_DIM = 500
 
-MODEL_PATH = Path("data/cache/douban_dk_noseg/")
+MODEL_PATH = Path("data/cache/douban_dk_seg/")
+WORD_SEG = True
 DEVICE = "cuda:0"
 
 
@@ -45,7 +46,7 @@ def prepare_dataset():
         tokens, df_ratings = joblib.load(cache_path)
     else:
         sp = spm.SentencePieceProcessor()
-        sp.Load("data/rating_unigram_False.model")
+        sp.Load(f"data/rating_unigram_{WORD_SEG}.model")
         df_ratings = pd.read_csv("data/ratings_prepared.csv")
         tokens = []
         for _, row in tqdm(df_ratings.iterrows(), total=df_ratings.shape[0]):
