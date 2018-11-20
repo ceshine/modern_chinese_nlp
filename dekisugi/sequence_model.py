@@ -39,9 +39,10 @@ class PoolingFCN(nn.Module):
     Adapted from fast.ai v0.7
     """
 
-    def __init__(self, layers: List[int], drops: Sequence[float]):
+    def __init__(self, layers: List[int], drops: Sequence[float], bidir: bool = False):
         super().__init__()
         assert len(layers) == len(drops) + 1
+        self.bidir = bidir
         layers[0] = layers[0] * 3
         self.layers = nn.ModuleList([
             LinearBlock(layers[i], layers[i + 1], drops[i]) for i in range(len(layers) - 1)])
@@ -55,7 +56,13 @@ class PoolingFCN(nn.Module):
         _, bs, _ = output.size()
         avgpool = self.pool(output, bs, False)
         mxpool = self.pool(output, bs, True)
-        x = torch.cat([output[-1], mxpool, avgpool], 1)
+        if self.bidir:
+            n_hid = output.size(2) // 2
+            x = torch.cat(
+                [output[-1, :, :n_hid], output[-1, :, n_hid:],
+                 mxpool, avgpool], 1)
+        else:
+            x = torch.cat([output[-1], mxpool, avgpool], 1)
         for l in self.layers:
             l_x = l(x)
             x = F.relu(l_x)
@@ -102,7 +109,7 @@ def get_sequence_model(
     embeddings = BasicEmbeddings(voc_sz, emb_sz, pad_idx, dropoute)
     rnn_stack = RNNStack(emb_sz, rnn_hid, rnn_layers, bidir,
                          dropouth, dropouti, wdrop, qrnn)
-    fcn = PoolingFCN([rnn_hid] + list(fcn_layers), fcn_dropouts)
+    fcn = PoolingFCN([rnn_hid] + list(fcn_layers), fcn_dropouts, bidir)
     return SequenceModel(embeddings, rnn_stack, fcn)
 
 
@@ -142,3 +149,31 @@ class SequenceRegressorBot(BaseBot):
             source_path / f"{prefix}embeddings.pth").state_dict())
         self.model.encoder.load_state_dict(torch.load(
             source_path / f"{prefix}rnn_stack.pth").state_dict())
+
+
+class SequenceClassifierBot(SequenceRegressorBot):
+    name = "seq_regressor"
+
+    def __init__(self, model, train_loader, val_loader, *, optimizer, clip_grad=0,
+                 avg_window=2000, log_dir="./data/cache/logs/", log_level=logging.INFO,
+                 checkpoint_dir="./data/cache/model_cache/", batch_idx=0, echo=False,
+                 device="cuda:0", use_tensorboard=False, multiclass=False):
+        super().__init__(
+            model, train_loader, val_loader,
+            optimizer=optimizer,
+            clip_grad=clip_grad,
+            avg_window=avg_window,
+            log_dir=log_dir,
+            log_level=log_level,
+            checkpoint_dir=checkpoint_dir,
+            batch_idx=batch_idx,
+            echo=echo,
+            device=device,
+            use_tensorboard=use_tensorboard
+        )
+        if multiclass:
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.BCEWithLogitsLoss()
+        self.multiclass = multiclass
+        self.loss_format = "%.4f"
