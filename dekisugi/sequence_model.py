@@ -25,6 +25,7 @@ class LinearBlock(nn.Module):
         self.bn = nn.BatchNorm1d(ni)
         nn.init.kaiming_normal_(self.lin.weight)
         nn.init.constant_(self.lin.bias, 0)
+        nn.init.ones_(self.bn.weight)
 
     def forward(self, x):
         return self.lin(self.drop(self.bn(x)))
