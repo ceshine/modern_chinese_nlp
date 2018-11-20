@@ -182,8 +182,15 @@ class EmbeddingDropout(nn.Module):
     def __init__(self, embed, dropout=0.1):
         super().__init__()
         self.embed = embed
-        self.weight = self.embed.weight
         self.dropout = dropout
+
+    @property
+    def weight(self):
+        return self.embed.weight
+
+    @weight.setter
+    def set_weight(self, value):
+        self.embed.weight = value
 
     def forward(self, words, dropout=0.1, scale=None):
         if self.training:
