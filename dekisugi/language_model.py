@@ -40,7 +40,7 @@ class RNNLanguageModel(nn.Module):
 
     def get_layer_groups(self):
         if self.tie_weights:
-            return [*self.rnn_stack.rnns, self.decoder]
+            return [*self.rnn_stack.rnns, *self.decoder]
         return [self.embeddings, *self.rnn_stack.rnns, self.decoder]
 
     def forward(self, input_tokens: torch.LongTensor):
