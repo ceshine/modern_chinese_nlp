@@ -14,7 +14,7 @@ class TextDataset(Dataset):
             x = x + [self.eos]
         if self.sos is not None:
             x = [self.sos]+x
-        return np.array(x), self.y[idx]
+        return np.array(x), len(x), self.y[idx]
 
     def __len__(self):
         return len(self.x)
