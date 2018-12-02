@@ -110,7 +110,7 @@ class SequenceModel(nn.Module):
         return outputs
 
     def get_layer_groups(self):
-        return [self.embeddings, *self.encoder.rnns, self.fcn]
+        return [self.embeddings, *self.encoder.layer_groups, self.fcn]
 
 
 def get_sequence_model(

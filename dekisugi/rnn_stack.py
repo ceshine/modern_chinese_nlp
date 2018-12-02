@@ -68,6 +68,7 @@ class RNNStack(nn.Module):
             if wdrop:
                 self.rnns = [WeightDrop(rnn, wdrop) for rnn in self.rnns]
         self.rnns = torch.nn.ModuleList(self.rnns)
+        self.layer_groups = self.rnns
 
         self.emb_sz, self.n_hid, self.n_layers = emb_sz, n_hid, n_layers
         self.dropouti = LockedDropout(dropouti)
