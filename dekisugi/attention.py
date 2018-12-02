@@ -2,9 +2,12 @@
 
 Adapted from https://github.com/huggingface/torchMoji/blob/master/torchmoji/attlayer.py
 """
+import math
+
 import torch
 
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
 
@@ -100,6 +103,89 @@ class MultiAttention(nn.Module):
         # Return:
             Tuple with (representations and attentions if self.return_attention else None).
         """
+        contexts, attn_weights = [], []
+        for attn in self.attns:
+            tmp = attn(inputs, input_lengths)
+            contexts.append(tmp[0]), attn_weights.append(tmp[1])
+        return (torch.cat(contexts, dim=1), attn_weights if self.return_attention else None)
+
+
+class QKVAttention(nn.Module):
+    def __init__(self, input_size, k_size, v_size, dropout=0, return_attention=False, batch_first=False):
+        super().__init__()
+        self.return_attention = return_attention
+        self.input_size = input_size
+        self.k_size, self.v_size = k_size, v_size
+        self.q_vector = Parameter(torch.FloatTensor(k_size))
+        self.k_linear = nn.Linear(input_size, k_size)
+        self.v_linear = nn.Linear(input_size, v_size)
+        self.batch_first = batch_first
+        self.dropout = dropout
+        self.init_weights()
+
+    def init_weights(self):
+        nn.init.normal_(self.q_vector, std=0.05)
+        nn.init.kaiming_normal_(self.k_linear.weight)
+        nn.init.constant_(self.k_linear.bias, 0)
+        nn.init.kaiming_normal_(self.v_linear.weight)
+        nn.init.constant_(self.v_linear.bias, 0)
+
+    def forward(self, inputs: torch.Tensor, input_lengths: torch.LongTensor):
+        k_vectors = self.k_linear(inputs)
+        v_vectors = self.v_linear(inputs)
+
+        # shape of logits: (batch_size, seq_len) or (seq_len, batch_size)
+        logits = k_vectors.matmul(self.q_vector) / math.sqrt(self.k_size)
+        unnorm_ai = (logits - logits.max()).exp()
+
+        # Compute a mask for the attention on the padded sequences
+        # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
+        if self.batch_first:
+            seq_dim = 1
+            batch_dim = 0
+        else:
+            seq_dim = 0
+            batch_dim = 1
+        max_len = unnorm_ai.size(seq_dim)
+        idxes = torch.arange(
+            0, max_len, dtype=torch.long, device=inputs.device).unsqueeze(batch_dim)
+        mask = (idxes < input_lengths.unsqueeze(seq_dim)).float()
+
+        # apply mask and renormalize attention scores (weights)
+        masked_weights = unnorm_ai * mask
+        att_sums = masked_weights.sum(
+            dim=seq_dim, keepdim=True)  # sums per sequence
+        attentions = masked_weights.div(att_sums)
+
+        if self.dropout:
+            attentions = F.dropout(attentions, self.dropout)
+
+        # apply attention weights
+        weighted = torch.mul(
+            v_vectors, attentions.unsqueeze(-1).expand_as(v_vectors))
+
+        # get the final fixed vector representations of the sentences
+        # shape: (batch_size, n_hid)
+        representations = weighted.sum(dim=seq_dim)
+
+        return (representations, attentions if self.return_attention else None)
+
+
+class MultiQKVAttention(nn.Module):
+    def __init__(self, input_size, k_size, v_size, heads=2, dropout=0, return_attention=False, batch_first=False):
+        super().__init__()
+        self.return_attention = return_attention
+        self.input_size = input_size
+        self.k_size, self.v_size = k_size, v_size
+        self.heads = heads
+        self.attns = nn.ModuleList([
+            QKVAttention(
+                input_size, k_size, v_size, dropout=dropout,
+                return_attention=return_attention,
+                batch_first=batch_first)
+            for i in range(heads)])
+
+    def forward(self, inputs: torch.Tensor, input_lengths: torch.LongTensor):
         contexts, attn_weights = [], []
         for attn in self.attns:
             tmp = attn(inputs, input_lengths)
