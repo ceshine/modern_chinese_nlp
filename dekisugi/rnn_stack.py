@@ -21,7 +21,7 @@ class RNNStack(nn.Module):
     """
 
     def __init__(self, emb_sz: int, n_hid: int, n_layers: int, bidir=False,
-                 dropouth=0.3, dropouti=0.65, wdrop=0.5, qrnn=False):
+                 dropouth=0.3, dropouti=0.65, wdrop=0.5, unit_type="lstm", qrnn=False):
         """Default constructor for the RNNStack class
 
         Parameters
@@ -45,10 +45,14 @@ class RNNStack(nn.Module):
             use QRNN instead of LSTM.
         """
         super().__init__()
+        print("[RNNStack] *qrnn* is deprecated, use unit_type=\"qrnn\" instead.")
+        unit_type = unit_type.strip().lower()
+        self.qrnn = (unit_type == "qrnn") or qrnn
+        self.unit = nn.LSTM if unit_type == "lstm" else nn.GRU
+        self.bs = 1
         self.ndir = 2 if bidir else 1
         assert not (
-            qrnn and self.bidir), "QRNN does not support bidirectionality."
-        self.bs, self.qrnn = 1, qrnn
+            self.qrnn and self.bidir), "QRNN does not support bidirectionality."
         if self.qrnn:
             # Using QRNN requires cupy: https://github.com/cupy/cupy
             from .torchqrnn.qrnn import QRNNLayer
@@ -59,8 +63,8 @@ class RNNStack(nn.Module):
                     rnn.linear = WeightDrop(
                         rnn.linear, wdrop, weights=['weight'])
         else:
-            self.rnns = [nn.LSTM(emb_sz if l == 0 else n_hid, n_hid // self.ndir,
-                                 1, bidirectional=bidir) for l in range(n_layers)]
+            self.rnns = [self.unit(emb_sz if l == 0 else n_hid, n_hid // self.ndir,
+                                   1, bidirectional=bidir) for l in range(n_layers)]
             if wdrop:
                 self.rnns = [WeightDrop(rnn, wdrop) for rnn in self.rnns]
         self.rnns = torch.nn.ModuleList(self.rnns)
@@ -103,7 +107,7 @@ class RNNStack(nn.Module):
         return next(self.parameters()).new_empty(self.ndir, self.bs, nh).zero_()
 
     def reset(self):
-        if self.qrnn:
+        if self.qrnn or (self.unit is nn.GRU):
             [r.reset() for r in self.rnns]
             self.hidden = [self.one_hidden(l) for l in range(self.n_layers)]
         else:
