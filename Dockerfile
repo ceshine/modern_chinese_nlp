@@ -1,14 +1,13 @@
-FROM ceshine/cuda-pytorch:0.4.1
+FROM ceshine/cuda-pytorch:1.0
 
 MAINTAINER CeShine Lee <ceshine@ceshine.net>
 
-RUN conda install -y  matplotlib seaborn && \
-  conda clean -i -l -t -y
+RUN conda install -y  matplotlib seaborn numpy cython pandas  scikit-learn jupyter && \
+  conda clean -i -l -tps -y
 RUN pip install --upgrade pip && \
-  pip install -U cupy pynvrtc git+https://github.com/salesforce/pytorch-qrnn \
-  jupyter h5py pandas==0.22.0 sklearn plotly watermark pytest \
+  pip install -U h5py plotly watermark pytest \
   pillow-simd joblib tqdm jupyter_contrib_nbextensions spacy \
-  eli5 opencc-python-reimplemented thulac jieba sentencepiece click && \
+  eli5 opencc-python-reimplemented thulac jieba sentencepiece click tensorboardX && \
   rm -rf ~/.cache/pip
 
 RUN jupyter contrib nbextension install --user
@@ -23,8 +22,8 @@ COPY --chown=docker:root jupyter_notebook_config.json /home/docker/project/
 COPY --chown=docker:root jupyter_notebook_config.py /home/docker/project/
 
 RUN sudo chown docker:root /home/docker/project
-RUN pip install https://github.com/ceshine/pytorch_helper_bot/archive/0.0.2.zip && \
-  pip install tensorboardX && rm -rf ~/.cache/pip
+RUN pip install https://github.com/ceshine/pytorch_helper_bot/archive/0.0.3.zip && \
+  rm -rf ~/.cache/pip
 RUN cd /home/docker/project && pip install -e  .
 
 WORKDIR /home/docker/project

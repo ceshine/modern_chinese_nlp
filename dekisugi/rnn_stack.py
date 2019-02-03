@@ -105,7 +105,6 @@ class RNNStack(nn.Module):
     def reset(self):
         if self.qrnn:
             [r.reset() for r in self.rnns]
-        if self.qrnn:
             self.hidden = [self.one_hidden(l) for l in range(self.n_layers)]
         else:
             self.hidden = [(self.one_hidden(l), self.one_hidden(l))

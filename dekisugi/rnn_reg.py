@@ -2,8 +2,14 @@
 
 Mostly copied from fast.ai v0.7.
 """
+from typing import Collection, Any, Optional
+import warnings
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+ArgStar = Collection[Any]
 
 
 def seq2seq_reg(output, xtra, loss, alpha=0, beta=0):
@@ -70,145 +76,60 @@ class LockedDropout(nn.Module):
         return m * x
 
 
-def noop(*args, **kwargs): return
-
-
 class WeightDrop(nn.Module):
-    """A custom torch layer that serves as a wrapper on another torch layer.
-    Primarily responsible for updating the weights in the wrapped module based
-    on a specified dropout.
-    """
+    "A module that warps another layer in which some weights will be replaced by 0 during training."
 
-    def __init__(self, module, dropout, weights=['weight_hh_l0']):
-        """ Default constructor for the WeightDrop module
-
-        Args:
-            module (torch.nn.Module): A pytorch layer being wrapped
-            dropout (float): a dropout value to apply
-            weights (list(str)): the parameters of the wrapped **module**
-                which should be fractionally dropped.
-        """
+    def __init__(self, module: nn.Module, weight_p: float, layer_names: Collection[str] = ['weight_hh_l0']):
         super().__init__()
-        self.module, self.weights, self.dropout = module, weights, dropout
-        self._setup()
-
-    def _setup(self):
-        """ for each string defined in self.weights, the corresponding
-        attribute in the wrapped module is referenced, then deleted, and subsequently
-        registered as a new parameter with a slightly modified name.
-
-        Args:
-            None
-
-         Returns:
-             None
-        """
-        if isinstance(self.module, nn.RNNBase):
-            self.module.flatten_parameters = noop
-        for name_w in self.weights:
-            w = getattr(self.module, name_w)
-            del self.module._parameters[name_w]
-            self.module.register_parameter(
-                name_w + '_raw', nn.Parameter(w.data))
+        self.module, self.weight_p, self.layer_names = module, weight_p, layer_names
+        for layer in self.layer_names:
+            # Makes a copy of the weights of the selected layers.
+            w = getattr(self.module, layer)
+            self.register_parameter(f'{layer}_raw', nn.Parameter(w.data))
+            self.module._parameters[layer] = F.dropout(
+                w, p=self.weight_p, training=False)
 
     def _setweights(self):
-        """ Uses pytorch's built-in dropout function to apply dropout to the parameters of
-        the wrapped module.
+        "Apply dropout to the raw weights."
+        for layer in self.layer_names:
+            raw_w = getattr(self, f'{layer}_raw')
+            self.module._parameters[layer] = F.dropout(
+                raw_w, p=self.weight_p, training=self.training)
 
-        Args:
-            None
-        Returns:
-            None
-        """
-        for name_w in self.weights:
-            raw_w = getattr(self.module, name_w + '_raw')
-            w = nn.functional.dropout(
-                raw_w, p=self.dropout, training=self.training)
-            if hasattr(self.module, name_w):
-                delattr(self.module, name_w)
-            setattr(self.module, name_w, w)
-
-    def forward(self, *args):
-        """ updates weights and delegates the propagation of the tensor to the wrapped module's
-        forward method
-
-        Args:
-            *args: supplied arguments
-
-        Returns:
-            tensor obtained by running the forward method on the wrapped module.
-        """
+    def forward(self, *args: ArgStar):
         self._setweights()
-        return self.module.forward(*args)
+        with warnings.catch_warnings():
+            # To avoid the warning that comes because the weights aren't flattened.
+            warnings.simplefilter("ignore")
+            return self.module.forward(*args)
+
+    def reset(self):
+        for layer in self.layer_names:
+            raw_w = getattr(self, f'{layer}_raw')
+            self.module._parameters[layer] = F.dropout(
+                raw_w, p=self.weight_p, training=False)
+        if hasattr(self.module, 'reset'):
+            self.module.reset()
 
 
 class EmbeddingDropout(nn.Module):
-    """ Applies dropout in the embedding layer by zeroing out some elements of the embedding vector.
-    Uses the dropout_mask custom layer to achieve this.
+    "Apply dropout with probabily `embed_p` to an embedding layer `emb`."
 
-    Args:
-        embed (torch.nn.Embedding): An embedding torch layer
-        words (torch.nn.Variable): A torch variable
-        dropout (float): dropout fraction to apply to the embedding weights
-        scale (float): additional scaling to apply to the modified embedding weights
-
-    Returns:
-        tensor of size: (batch_size x seq_length x embedding_size)
-
-    Example:
-
-    >> embed = torch.nn.Embedding(10,3)
-    >> words = Variable(torch.LongTensor([[1,2,4,5] ,[4,3,2,9]]))
-    >> words.size()
-        (2,4)
-    >> embed_dropout_layer = EmbeddingDropout(embed)
-    >> dropout_out_ = embed_dropout_layer(embed, words, dropout=0.40)
-    >> dropout_out_
-        Variable containing:
-        (0 ,.,.) =
-          1.2549  1.8230  1.9367
-          0.0000 -0.0000  0.0000
-          2.2540 -0.1299  1.5448
-          0.0000 -0.0000 -0.0000
-
-        (1 ,.,.) =
-          2.2540 -0.1299  1.5448
-         -4.0457  2.4815 -0.2897
-          0.0000 -0.0000  0.0000
-          1.8796 -0.4022  3.8773
-        [torch.FloatTensor of size 2x4x3]
-    """
-
-    def __init__(self, embed, dropout=0.1):
+    def __init__(self, emb: nn.Module, embed_p: float):
         super().__init__()
-        self.embed = embed
-        self.dropout = dropout
+        self.emb, self.embed_p = emb, embed_p
+        self.pad_idx = self.emb.padding_idx
+        if self.pad_idx is None:
+            self.pad_idx = -1
 
-    @property
-    def weight(self):
-        return self.embed.weight
-
-    @weight.setter
-    def set_weight(self, value):
-        self.embed.weight = value
-
-    def forward(self, words, dropout=0.1, scale=None):
-        if self.training:
-            size = (self.embed.weight.size(0), 1)
-            mask = dropout_mask(self.embed.weight.data, size, self.dropout)
-            masked_embed_weight = mask * self.embed.weight
+    def forward(self, words: torch.LongTensor, scale: Optional[float] = None)->torch.Tensor:
+        if self.training and self.embed_p != 0:
+            size = (self.emb.weight.size(0), 1)
+            mask = dropout_mask(self.emb.weight.data, size, self.embed_p)
+            masked_embed = self.emb.weight * mask
         else:
-            masked_embed_weight = self.embed.weight
-
+            masked_embed = self.emb.weight
         if scale:
-            masked_embed_weight = scale * masked_embed_weight
-
-        padding_idx = self.embed.padding_idx
-        if padding_idx is None:
-            padding_idx = -1
-
-        X = nn.functional.embedding(
-            words,
-            masked_embed_weight, padding_idx, self.embed.max_norm,
-            self.embed.norm_type, self.embed.scale_grad_by_freq, self.embed.sparse)
-        return X
+            masked_embed.mul_(scale)
+        return F.embedding(words, masked_embed, self.pad_idx, self.emb.max_norm,
+                           self.emb.norm_type, self.emb.scale_grad_by_freq, self.emb.sparse)
