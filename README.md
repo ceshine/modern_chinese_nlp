@@ -6,7 +6,7 @@ My humble contribution to the democratization of the Chinese NLP technology (cur
 
 ## 20190425 Update
 
-**This project has lost its purpose since the moment BERT released multilingual and Chinese version of pretrained models. Readers are advised to check out [those models](https://github.com/google-research/bert/blob/master/multilingual.md) and other similar projects (e.g. [Universal Sentence Encoder](https://tfhub.dev/google/universal-sentence-encoder-xling-many/1)).**
+**This project has lost its purpose since the moment BERT released its multilingual and Chinese versions of pretrained models. Readers are advised to check out [those models](https://github.com/google-research/bert/blob/master/multilingual.md) and other similar projects (e.g. [Universal Sentence Encoder](https://tfhub.dev/google/universal-sentence-encoder-xling-many/1)).**
 
 ## Development Notes
 
